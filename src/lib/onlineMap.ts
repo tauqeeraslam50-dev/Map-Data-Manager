@@ -30,7 +30,7 @@ async function putTile(key: string, blob: Blob) {
 
 export async function chooseDownloadDirectory(): Promise<string> {
   const picker = (window as any).showDirectoryPicker;
-  if (typeof picker !== 'function') throw new Error('Folder selection is not supported here. Use Chrome/Edge desktop, or use Import Tile Folder below.');
+  if (typeof picker !== 'function') throw new Error('Folder selection is not supported here. Use Chrome/Edge desktop, or use Select Folder & Scan Offline Maps.');
   selectedDirectory = await picker({ mode: 'readwrite' });
   selectedDirectoryName = selectedDirectory?.name || null;
   return selectedDirectoryName || 'Selected folder';
@@ -111,23 +111,37 @@ export async function downloadTileRegion(template: string, minLat: number, minLn
   return { done, total, savedToFolder, directory: selectedDirectoryName };
 }
 
-/** Import a normal XYZ tile folder containing z/x/y.png (or jpg/jpeg/webp) files. */
-export async function importTileFolder(files: FileList | File[]): Promise<{ imported: number; skipped: number; zooms: number[] }> {
+/** Select one parent folder. The browser returns every file in that folder and all subfolders. */
+export async function importTileFolder(files: FileList | File[], onProgress?: (done: number, total: number) => void): Promise<{ imported: number; skipped: number; zooms: number[] }> {
   const list = Array.from(files);
   let imported = 0;
   let skipped = 0;
+  let done = 0;
+  const total = list.length;
   const zooms = new Set<number>();
   for (const file of list) {
     const relativePath = ((file as any).webkitRelativePath || file.name || '').replace(/\\/g, '/');
     const match = relativePath.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
-    if (!match) { skipped++; continue; }
+    if (!match) {
+      skipped++;
+      done++;
+      onProgress?.(done, total);
+      continue;
+    }
     const z = Number(match[1]);
     const x = Number(match[2]);
     const y = Number(match[3]);
-    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) { skipped++; continue; }
+    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) {
+      skipped++;
+      done++;
+      onProgress?.(done, total);
+      continue;
+    }
     await putTile(tileKey(z, x, y), file);
     zooms.add(z);
     imported++;
+    done++;
+    onProgress?.(done, total);
   }
   return { imported, skipped, zooms: Array.from(zooms).sort((a, b) => a - b) };
 }
