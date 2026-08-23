@@ -1,0 +1,71 @@
+<Window x:Class="MapDataManager.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mapsui="clr-namespace:Mapsui.UI.Wpf;assembly=Mapsui.UI.Wpf"
+        Title="Map Data Manager — Native GIS" Height="900" Width="1440" MinHeight="700" MinWidth="1100"
+        Background="{StaticResource WindowBackground}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="34" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#162131" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1">
+            <DockPanel Margin="16,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Vertical" VerticalAlignment="Center">
+                    <TextBlock Text="MAP DATA MANAGER" Foreground="{StaticResource TextPrimary}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="Native offline GIS engine" Foreground="{StaticResource TextSecondary}" FontSize="11" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Click="SelectFolder_Click" Content="Select Offline Map Folder" />
+                    <Button Click="LoadMbTiles_Click" Content="Open MBTiles" />
+                    <Button Click="ClearMap_Click" Content="Clear" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,1,0" Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="OFFLINE MAP" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
+                        <TextBlock Text="Source folder" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock x:Name="FolderText" Text="No folder selected" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,12" />
+
+                        <TextBlock Text="Format" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock x:Name="FormatText" Text="—" Foreground="{StaticResource TextPrimary}" Margin="0,4,0,12" />
+
+                        <TextBlock Text="Tiles" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock x:Name="TilesText" Text="0" Foreground="{StaticResource TextPrimary}" Margin="0,4,0,12" />
+
+                        <TextBlock Text="Zoom levels" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock x:Name="ZoomText" Text="—" Foreground="{StaticResource TextPrimary}" Margin="0,4,0,12" />
+
+                        <TextBlock Text="Coverage" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock x:Name="BoundsText" Text="—" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,18" />
+
+                        <ProgressBar x:Name="ImportProgress" Height="8" Minimum="0" Maximum="100" Visibility="Collapsed" />
+                        <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Grid Grid.Column="1" Background="#0C121B">
+                <mapsui:MapControl x:Name="MapControl" />
+                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Padding="10,7" Background="#D9162130" CornerRadius="5">
+                    <TextBlock Text="OFFLINE GIS • NO INTERNET REQUIRED" Foreground="#F3F6FA" FontSize="11" FontWeight="SemiBold" />
+                </Border>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Background="#111A27" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+            <TextBlock x:Name="FooterText" Text="Native WPF + Mapsui + MBTiles" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="12,0" FontSize="11" />
+        </Border>
+    </Grid>
+</Window>
