@@ -17,6 +17,8 @@ export interface MapPackage {
   enabled: boolean;
   minZoom: number;
   maxZoom: number;
+  /** Vector source-layer IDs discovered from PMTiles metadata. */
+  vectorLayers?: string[];
 }
 
 interface RFDatabase extends DBSchema {
@@ -38,7 +40,7 @@ let dbPromise: Promise<IDBPDatabase<RFDatabase>> | null = null;
 
 export function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<RFDatabase>('rf-offline-manager', 2, {
+    dbPromise = openDB<RFDatabase>('rf-offline-manager', 3, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           db.createObjectStore('towers', { keyPath: 'id' });
@@ -46,11 +48,12 @@ export function getDB() {
         }
         if (oldVersion < 2) {
           db.createObjectStore('mapPackages', { keyPath: 'id' });
-          // If we had 'tiles' store from old version, we could delete it, but let's just leave it or safely ignore.
           if (db.objectStoreNames.contains('tiles' as any)) {
             db.deleteObjectStore('tiles' as any);
           }
         }
+        // Version 3 only expands the MapPackage TypeScript metadata.
+        // No object-store migration is required because existing records remain valid.
       },
     });
   }
