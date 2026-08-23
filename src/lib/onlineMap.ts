@@ -19,13 +19,18 @@ function openTileDB(): Promise<IDBDatabase> {
 
 async function putTile(key: string, blob: Blob) {
   const db = await openTileDB();
-  await new Promise<void>((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(blob, key); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(blob, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
   db.close();
 }
 
 export async function chooseDownloadDirectory(): Promise<string> {
   const picker = (window as any).showDirectoryPicker;
-  if (typeof picker !== 'function') throw new Error('Folder selection is not supported by this browser. Use Chrome or Edge.');
+  if (typeof picker !== 'function') throw new Error('Folder selection is not supported here. Use Chrome/Edge desktop, or use Import Tile Folder below.');
   selectedDirectory = await picker({ mode: 'readwrite' });
   selectedDirectoryName = selectedDirectory?.name || null;
   return selectedDirectoryName || 'Selected folder';
@@ -45,14 +50,24 @@ async function saveTileToDirectory(z: number, x: number, y: number, blob: Blob) 
 
 export async function getCachedTile(key: string): Promise<ArrayBuffer | null> {
   const db = await openTileDB();
-  const value = await new Promise<Blob | undefined>((resolve, reject) => { const tx = db.transaction(STORE, 'readonly'); const request = tx.objectStore(STORE).get(key); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+  const value = await new Promise<Blob | undefined>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const request = tx.objectStore(STORE).get(key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
   db.close();
   return value ? value.arrayBuffer() : null;
 }
 
 export async function clearOfflineTiles() {
   const db = await openTileDB();
-  await new Promise<void>((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).clear(); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
   db.close();
 }
 
@@ -94,6 +109,27 @@ export async function downloadTileRegion(template: string, minLat: number, minLn
     }
   }
   return { done, total, savedToFolder, directory: selectedDirectoryName };
+}
+
+/** Import a normal XYZ tile folder containing z/x/y.png (or jpg/jpeg/webp) files. */
+export async function importTileFolder(files: FileList | File[]): Promise<{ imported: number; skipped: number; zooms: number[] }> {
+  const list = Array.from(files);
+  let imported = 0;
+  let skipped = 0;
+  const zooms = new Set<number>();
+  for (const file of list) {
+    const relativePath = ((file as any).webkitRelativePath || file.name || '').replace(/\\/g, '/');
+    const match = relativePath.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
+    if (!match) { skipped++; continue; }
+    const z = Number(match[1]);
+    const x = Number(match[2]);
+    const y = Number(match[3]);
+    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) { skipped++; continue; }
+    await putTile(tileKey(z, x, y), file);
+    zooms.add(z);
+    imported++;
+  }
+  return { imported, skipped, zooms: Array.from(zooms).sort((a, b) => a - b) };
 }
 
 export function registerOfflineProtocol() {
