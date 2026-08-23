@@ -3,11 +3,15 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MapDataManager</AssemblyName>
     <RootNamespace>MapDataManager</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Mapsui" Version="5.0.0" />
     <PackageReference Include="Mapsui.Wpf" Version="5.0.0" />
