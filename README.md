@@ -1,40 +1,54 @@
 # Map Data Manager
 
-This repository is the **original Google AI Studio Map Data Manager** project.
+This repository contains the Map Data Manager project.
 
-## Important project identity
+## New primary architecture — Native Windows GIS
 
-- Repository: `tauqeeraslam50-dev/Map-Data-Manager`
-- Package name: `map-data-manager`
-- This is **not** the Radio Network Management System (RNMS).
-- Do not run this project from an RNMS folder such as `D:\Alpha2`.
+The offline map engine is being rebuilt as a **native WPF/.NET desktop application** instead of the previous browser/Electron architecture.
 
-## Run locally
+- WPF / .NET 9
+- Mapsui 5.1 native renderer
+- BruTile MBTiles support
+- SQLite-backed offline map storage
+- XYZ folder → MBTiles importer
+- No browser filesystem dependency
+- No localhost tile server
+- No CORS or HTTPS certificate dependency
+- Designed for standalone offline GIS use on Windows
 
-Extract/clone this repository into its own folder, for example:
-
-```powershell
-cd "D:\Map-Data-Manager"
-npm.cmd install
-npm.cmd run dev
-```
-
-The development server uses port **5173**:
+The new desktop application is located at:
 
 ```text
-http://localhost:5173/
+desktop/MapDataManager.Desktop/
 ```
 
-If `package.json` shows `radio-network-management-system`, you are in the wrong folder.
+## Run the new desktop application
 
-## Current functionality
+Requires the .NET 9 SDK on Windows.
 
-- React + Vite application
-- MapLibre map viewer
-- PMTiles package management
-- IndexedDB metadata storage
-- Tower CSV import
-- Map folder selection and scanning
-- Offline map data inventory
+```powershell
+cd "desktop\MapDataManager.Desktop"
+dotnet restore
+dotnet build
+dotnet run
+```
 
-The project is being developed in stages toward a standalone offline Pakistan GIS/Map Data Manager. Electron packaging will be added only after the web application and offline map engine are stable.
+### Offline map workflow
+
+Select a folder containing standard XYZ tiles:
+
+```text
+MapFolder/
+  5/
+    17/
+      12.png
+      13.png
+  6/
+    ...
+```
+
+The application scans the complete folder, converts the tiles to an MBTiles database in the user's local application data, and opens that database directly in Mapsui. Existing MBTiles files can also be opened directly.
+
+## Legacy AI Studio web application
+
+The original React/Vite application remains in the repository while the native desktop GIS engine is developed and validated. It is not the primary offline-map architecture going forward.
