@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getTowers, Tower } from '../lib/db';
@@ -19,7 +19,131 @@ export default function MapViewer() {
     getTowers().then(setTowers);
   }, []);
 
-  // Initialize map
+  const updatePmtilesLayer = useCallback(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return;
+
+    import('../lib/mapState').then(module => {
+      if (!map.current) return;
+      const activePackages = module.getActivePackages();
+      const currentStyle = map.current.getStyle();
+      if (!currentStyle) return;
+
+      // Remove all layers/sources belonging to previously rendered PMTiles packages.
+      const dynamicLayerIds = (currentStyle.layers || [])
+        .map(layer => layer.id)
+        .filter(id => id.startsWith('pmtiles-layer-'));
+
+      dynamicLayerIds.forEach(layerId => {
+        if (map.current?.getLayer(layerId)) {
+          map.current.removeLayer(layerId);
+        }
+      });
+
+      Object.keys(currentStyle.sources || {})
+        .filter(sourceId => sourceId.startsWith('pmtiles-pkg-'))
+        .forEach(sourceId => {
+          if (map.current?.getSource(sourceId)) {
+            map.current.removeSource(sourceId);
+          }
+        });
+
+      let renderedPackageCount = 0;
+
+      activePackages.forEach(pkg => {
+        if (!pkg.enabled || !map.current) return;
+
+        const sourceId = `pmtiles-pkg-${pkg.id}`;
+        const archiveUrl = `pmtiles://${pkg.name}`;
+        const isVector = pkg.tileType === 1;
+
+        if (isVector) {
+          const sourceLayers = pkg.vectorLayers || [];
+          if (sourceLayers.length === 0) {
+            console.warn(`No vector source layers found in ${pkg.name}`);
+            return;
+          }
+
+          map.current.addSource(sourceId, {
+            type: 'vector',
+            url: archiveUrl
+          });
+
+          sourceLayers.forEach((sourceLayer, index) => {
+            const safeIndex = `${pkg.id}-${index}`;
+
+            // Polygon features.
+            map.current?.addLayer({
+              id: `pmtiles-layer-${safeIndex}-fill`,
+              type: 'fill',
+              source: sourceId,
+              'source-layer': sourceLayer,
+              filter: ['==', ['geometry-type'], 'Polygon'],
+              paint: {
+                'fill-color': '#3b82f6',
+                'fill-opacity': 0.16
+              }
+            }, 'los-line-layer');
+
+            // Linear features such as roads, rivers and boundaries.
+            map.current?.addLayer({
+              id: `pmtiles-layer-${safeIndex}-line`,
+              type: 'line',
+              source: sourceId,
+              'source-layer': sourceLayer,
+              filter: ['==', ['geometry-type'], 'LineString'],
+              paint: {
+                'line-color': '#2563eb',
+                'line-width': 1.2,
+                'line-opacity': 0.85
+              }
+            }, 'los-line-layer');
+
+            // Point features such as POIs. A simple circle avoids assuming
+            // a particular text/icon field exists in the source layer.
+            map.current?.addLayer({
+              id: `pmtiles-layer-${safeIndex}-point`,
+              type: 'circle',
+              source: sourceId,
+              'source-layer': sourceLayer,
+              filter: ['==', ['geometry-type'], 'Point'],
+              paint: {
+                'circle-radius': 3,
+                'circle-color': '#1d4ed8',
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 1
+              }
+            }, 'los-line-layer');
+          });
+
+          renderedPackageCount++;
+        } else {
+          map.current.addSource(sourceId, {
+            type: 'raster',
+            url: archiveUrl,
+            tileSize: 256
+          });
+
+          map.current.addLayer({
+            id: `pmtiles-layer-${pkg.id}-raster`,
+            type: 'raster',
+            source: sourceId,
+            paint: {
+              'raster-opacity': 1
+            }
+          }, 'los-line-layer');
+
+          renderedPackageCount++;
+        }
+      });
+
+      setHasMapLayer(renderedPackageCount > 0);
+    }).catch(error => {
+      console.error('Failed to update PMTiles layers:', error);
+      setHasMapLayer(false);
+    });
+  }, []);
+
+  // Initialize map.
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
 
@@ -38,13 +162,13 @@ export default function MapViewer() {
           }
         ]
       },
-      center: [69.3451, 30.3753], // Pakistan
+      center: [69.3451, 30.3753],
       zoom: 5
     });
 
-    map.current.on('load', () => {
-      // Add empty source and layer for LoS line
+    const handleMapLoad = () => {
       if (!map.current) return;
+
       map.current.addSource(lineSourceId, {
         type: 'geojson',
         data: {
@@ -71,9 +195,11 @@ export default function MapViewer() {
           'line-dasharray': [2, 2]
         }
       });
-      
+
       updatePmtilesLayer();
-    });
+    };
+
+    map.current.on('load', handleMapLoad);
 
     const unsubscribe = subscribePmtilesFile(() => {
       updatePmtilesLayer();
@@ -81,83 +207,10 @@ export default function MapViewer() {
 
     return () => {
       unsubscribe();
+      map.current?.remove();
+      map.current = null;
     };
-  }, []);
-
-  const updatePmtilesLayer = () => {
-    if (!map.current) return;
-    
-    // We import getActivePackages to see what needs rendering
-    import('../lib/mapState').then(module => {
-      const activePackages = module.getActivePackages();
-      
-      // Clean up previous dynamically added pmtiles sources and layers
-      // MapLibre doesn't have an easy "get all sources of type X" without iterating styles.
-      // Easiest is to keep track of added source IDs or just infer from currentPackages state.
-      const currentStyle = map.current?.getStyle();
-      if (!currentStyle) return;
-
-      Object.keys(currentStyle.sources).forEach(sourceId => {
-        if (sourceId.startsWith('pmtiles-pkg-')) {
-          const layerId = `layer-${sourceId}`;
-          if (map.current?.getLayer(layerId)) {
-            map.current.removeLayer(layerId);
-          }
-          if (map.current?.getSource(sourceId)) {
-            map.current.removeSource(sourceId);
-          }
-        }
-      });
-
-      // Add enabled packages
-      activePackages.forEach(pkg => {
-        if (!pkg.enabled || !map.current) return;
-
-        const sourceId = `pmtiles-pkg-${pkg.id}`;
-        const layerId = `layer-${sourceId}`;
-
-        // 1=Mvt (Vector), 2=Png, 3=Jpeg, 4=Webp (Raster)
-        const isVector = pkg.tileType === 1;
-
-        if (isVector) {
-          // Vector tiles require a style. For offline preview, if we don't have style.json, 
-          // we can just add a generic wireframe/line style.
-          map.current.addSource(sourceId, {
-            type: 'vector',
-            url: `pmtiles://${pkg.name}`
-          });
-          
-          // Generic fallback vector layer just to show data exists
-          map.current.addLayer({
-            id: layerId,
-            type: 'line',
-            source: sourceId,
-            'source-layer': Object.keys(pkg).length ? 'default' : 'default', // PMTiles doesn't expose default source-layer easily without metadata
-            paint: {
-              'line-color': '#3b82f6',
-              'line-width': 1
-            }
-          }, 'los-line-layer');
-        } else {
-          // Raster
-          map.current.addSource(sourceId, {
-            type: 'raster',
-            url: `pmtiles://${pkg.name}`,
-            tileSize: 256
-          });
-
-          map.current.addLayer({
-            id: layerId,
-            type: 'raster',
-            source: sourceId,
-            paint: {}
-          }, 'los-line-layer'); // Insert before the line layer
-        }
-      });
-      
-      setHasMapLayer(activePackages.length > 0);
-    });
-  };
+  }, [updatePmtilesLayer]);
 
   const handleTowerClick = (tower: Tower) => {
     setSelectedTowers(prev => {
@@ -172,18 +225,17 @@ export default function MapViewer() {
     });
   };
 
-  // Update markers
+  // Update markers.
   useEffect(() => {
-    if (!map.current) return;
+    if (!map.current || !map.current.isStyleLoaded()) return;
 
-    // Clear existing markers
-    markersRef.current.forEach(m => m.remove());
+    markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
 
     towers.forEach(tower => {
       const isSelected = selectedTowers.some(t => t.id === tower.id);
       const color = isSelected ? '#ef4444' : '#3b82f6';
-      
+
       const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`
         <div class="font-medium text-slate-800">${tower.name}</div>
         <div class="text-xs text-slate-500">ID: ${tower.id}</div>
@@ -192,14 +244,12 @@ export default function MapViewer() {
       `);
 
       const marker = new maplibregl.Marker({ color })
-        .setLngLat([tower.lng, tower.lat]) // Note: maplibre uses [lng, lat]
+        .setLngLat([tower.lng, tower.lat])
         .setPopup(popup)
         .addTo(map.current!);
-        
-      const el = marker.getElement();
-      el.addEventListener('click', (e) => {
-        // Prevent map click if we had one
-        e.stopPropagation();
+
+      marker.getElement().addEventListener('click', (event) => {
+        event.stopPropagation();
         handleTowerClick(tower);
       });
 
@@ -207,7 +257,7 @@ export default function MapViewer() {
     });
   }, [towers, selectedTowers]);
 
-  // Update LoS line and calculations
+  // Update LoS line and calculations.
   useEffect(() => {
     if (selectedTowers.length === 2) {
       const [t1, t2] = selectedTowers;
@@ -228,10 +278,10 @@ export default function MapViewer() {
             ]
           }
         });
-        
+
         map.current.setPaintProperty(
-          'los-line-layer', 
-          'line-color', 
+          'los-line-layer',
+          'line-color',
           los.isClearLoS ? '#22c55e' : '#ef4444'
         );
       }
@@ -259,7 +309,7 @@ export default function MapViewer() {
           {selectedTowers.length === 0 && "Select a tower to begin"}
           {selectedTowers.length === 1 && "Select a second tower for LoS"}
           {selectedTowers.length === 2 && (
-            <button 
+            <button
               onClick={() => setSelectedTowers([])}
               className="text-blue-600 hover:text-blue-800 hover:underline font-bold"
             >
@@ -268,20 +318,26 @@ export default function MapViewer() {
           )}
         </div>
       </div>
-      
+
       <div className="relative flex-1">
         <div ref={mapContainer} style={{ height: '100%', width: '100%', minHeight: '400px', zIndex: 1 }} />
-        
+
+        {!hasMapLayer && (
+          <div className="absolute top-20 right-4 z-[1000] bg-white/90 backdrop-blur rounded-md border border-slate-200 shadow px-3 py-2 text-xs text-slate-600">
+            No offline map package enabled. Install a PMTiles package from Data Manager.
+          </div>
+        )}
+
         {losResult && selectedTowers.length === 2 && (
           <div className="absolute bottom-6 left-6 z-[1000] bg-white/95 backdrop-blur rounded-lg border border-slate-300 shadow-2xl p-4 w-[360px]">
             <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 border-b border-slate-200 pb-2">
               Link Profile: {selectedTowers[0].name} ↔ {selectedTowers[1].name}
             </h3>
             <div className="flex justify-between items-center mb-4">
-               <div className="bg-blue-50 border border-blue-100 p-2 rounded w-full">
-                  <p className="text-[10px] text-blue-600 font-bold uppercase">Air Distance</p>
-                  <p className="text-lg font-mono font-bold text-blue-900">{losResult.distance.toFixed(2)} km</p>
-               </div>
+              <div className="bg-blue-50 border border-blue-100 p-2 rounded w-full">
+                <p className="text-[10px] text-blue-600 font-bold uppercase">Air Distance</p>
+                <p className="text-lg font-mono font-bold text-blue-900">{losResult.distance.toFixed(2)} km</p>
+              </div>
             </div>
             <div className="space-y-2 text-xs font-mono text-slate-600">
               <div className="flex justify-between items-end border-b border-slate-100 pb-1">
