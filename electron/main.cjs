@@ -1,5 +1,6 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
-const http = require('http');
+const { app, BrowserWindow, dialog, ipcMain, session } = require('electron');
+const https = require('https');
+const selfsigned = require('selfsigned');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
@@ -48,8 +49,29 @@ function tileBounds(z, x, y) {
   return { minLat: Math.min(a, b), maxLat: Math.max(a, b), minLng, maxLng };
 }
 
+function createCertificate() {
+  const attrs = [
+    { name: 'commonName', value: 'localhost' },
+    { name: 'organizationName', value: 'PakLink Map Data Manager' }
+  ];
+  return selfsigned.generate(attrs, {
+    keySize: 2048,
+    days: 825,
+    extensions: [
+      { name: 'basicConstraints', cA: false },
+      { name: 'keyUsage', keyUsages: ['digitalSignature', 'keyEncipherment'] },
+      { name: 'extKeyUsage', usages: ['serverAuth'] },
+      { name: 'subjectAltName', altNames: [
+        { type: 2, value: 'localhost' },
+        { type: 7, ip: '127.0.0.1' }
+      ] }
+    ]
+  });
+}
+
 function startTileServer() {
-  server = http.createServer((req, res) => {
+  const cert = createCertificate();
+  server = https.createServer({ key: cert.private, cert: cert.cert }, (req, res) => {
     const parsed = url.parse(req.url || '');
     if (req.method === 'OPTIONS') {
       sendHeaders(res, 204);
@@ -57,7 +79,7 @@ function startTileServer() {
     }
     if (parsed.pathname === '/health') {
       sendHeaders(res, 200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ ok: true, root: offlineRoot, port: serverPort }));
+      return res.end(JSON.stringify({ ok: true, protocol: 'https', root: offlineRoot, port: serverPort }));
     }
     const match = parsed.pathname.match(/^\/tiles\/(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
     if (!match || !offlineRoot) {
@@ -89,21 +111,26 @@ function createWindow() {
     minHeight: 700,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
   });
+  mainWindow.webContents.session.setCertificateVerifyProc((request, callback) => {
+    const host = request.hostname || '';
+    if (host === 'localhost' || host === '127.0.0.1') return callback(0);
+    callback(-3);
+  });
   const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
   mainWindow.loadURL(devUrl);
   if (process.env.ELECTRON_DEVTOOLS === '1') mainWindow.webContents.openDevTools();
 }
 
-ipcMain.handle('tile-server:get-url', () => `http://127.0.0.1:${serverPort}`);
+ipcMain.handle('tile-server:get-url', () => `https://127.0.0.1:${serverPort}`);
 ipcMain.handle('tile-server:test', async () => {
-  if (!serverPort) return { ok: false, error: 'Tile server is not ready' };
-  return { ok: true, url: `http://127.0.0.1:${serverPort}`, root: offlineRoot };
+  if (!serverPort) return { ok: false, error: 'HTTPS tile server is not ready' };
+  return { ok: true, protocol: 'https', url: `https://127.0.0.1:${serverPort}`, root: offlineRoot };
 });
 ipcMain.handle('offline:select-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
   if (result.canceled || !result.filePaths[0]) return null;
   offlineRoot = result.filePaths[0];
-  return { path: offlineRoot, tileUrl: `http://127.0.0.1:${serverPort}/tiles/{z}/{x}/{y}.png` };
+  return { path: offlineRoot, tileUrl: `https://127.0.0.1:${serverPort}/tiles/{z}/{x}/{y}.png` };
 });
 ipcMain.handle('offline:get-folder', () => offlineRoot);
 ipcMain.handle('offline:scan', async () => {
