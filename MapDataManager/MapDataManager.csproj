@@ -3,7 +3,6 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MapDataManager</AssemblyName>
@@ -12,7 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Mapsui" Version="5.0.0" />
     <PackageReference Include="Mapsui.Wpf" Version="5.0.0" />
-    <PackageReference Include="BruTile" Version="5.0.0" />
+    <PackageReference Include="BruTile" Version="6.0.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.8" />
   </ItemGroup>
 </Project>
