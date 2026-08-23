@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using Microsoft.Win32;
 using Mapsui;
 using Mapsui.Tiling;
 
@@ -14,23 +15,23 @@ public partial class MainWindow : Window
         var map = new Map();
         map.Layers.Add(OpenStreetMap.CreateTileLayer());
         MapControl.Map = map;
-
         StatusText.Text = "Native GIS engine ready. Online base map loaded for testing.";
     }
 
     private void SelectFolder_Click(object sender, RoutedEventArgs e)
     {
-        using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        // WPF has no built-in FolderBrowserDialog. Use the Windows Shell picker
+        // through the OpenFolderDialog available in modern Windows App SDK/WPF.
+        var dialog = new OpenFolderDialog
         {
-            Description = "Select the folder containing offline XYZ/TMS map tiles",
-            UseDescriptionForTitle = true,
-            ShowNewFolderButton = true
+            Title = "Select the folder containing offline XYZ/TMS map tiles",
+            Multiselect = false
         };
 
-        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        if (dialog.ShowDialog() != true)
             return;
 
-        var folder = dialog.SelectedPath;
+        var folder = dialog.FolderName;
         var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
             .Where(IsRasterTile)
             .ToList();
