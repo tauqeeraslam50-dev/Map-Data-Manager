@@ -1,0 +1,6 @@
+{
+  "name": "Offline RF Map Manager",
+  "description": "Offline map and data manager for RF line of sight and distance calculation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
