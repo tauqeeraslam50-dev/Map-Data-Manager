@@ -2,7 +2,6 @@ using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -18,8 +17,6 @@ public partial class MainWindow : Window
     private readonly List<OfflineTile> _offlineTiles = new();
     private int _offlineZoom = -1;
     private bool _offlineTms;
-    private double _offlineMinLat = -85;
-    private double _offlineMaxLat = 85;
     private string? _offlineFolder;
 
     public MainWindow()
@@ -102,13 +99,14 @@ public partial class MainWindow : Window
             OfflineScrollViewer.Visibility = Visibility.Visible;
             MapControl.Visibility = Visibility.Collapsed;
             ModeStatus.Content = "OFFLINE";
-            CoverageText.Text = $"{_offlineTiles.Count:N0} raster tiles • Zoom {_offlineZoom} • {_offlineTms ? "TMS" : "XYZ"}";
+            var tileScheme = _offlineTms ? "TMS" : "XYZ";
+            CoverageText.Text = $"{_offlineTiles.Count:N0} raster tiles • Zoom {_offlineZoom} • {tileScheme}";
             FileStatus.Content = folder;
             StatusText.Text = $"Offline map rendered from {_offlineTiles.Count:N0} detected tiles at zoom {_offlineZoom}.";
 
             await Task.Yield();
-            OfflineScrollViewer.ScrollToHorizontalOffset(OfflineCanvas.Width / 2 - OfflineScrollViewer.ViewportWidth / 2);
-            OfflineScrollViewer.ScrollToVerticalOffset(OfflineCanvas.Height / 2 - OfflineScrollViewer.ViewportHeight / 2);
+            OfflineScrollViewer.ScrollToHorizontalOffset(Math.Max(0, OfflineCanvas.Width / 2 - OfflineScrollViewer.ViewportWidth / 2));
+            OfflineScrollViewer.ScrollToVerticalOffset(Math.Max(0, OfflineCanvas.Height / 2 - OfflineScrollViewer.ViewportHeight / 2));
         }
         catch (Exception ex)
         {
@@ -250,9 +248,9 @@ public partial class MainWindow : Window
         if (!int.TryParse(fileName, out var third)) return false;
         if (z < 0 || z > 24) return false;
 
-        // Standard XYZ: z/x/y.ext. TMS can be enabled automatically if the folder name contains "tms".
         var tms = root.Contains("tms", StringComparison.OrdinalIgnoreCase);
-        tile = new OfflineTile(path, z, second, tms ? (1 << z) - 1 - third : third);
+        _ = tms;
+        tile = new OfflineTile(path, z, second, third);
         return true;
     }
 
