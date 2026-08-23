@@ -7,6 +7,7 @@ export default function UploadManager() {
   const [towerCount, setTowerCount] = useState(0);
   const [packages, setPackages] = useState<MapPackage[]>([]);
   const [selectedFolder, setSelectedFolder] = useState('No folder selected');
+  const [busy, setBusy] = useState(false);
   const packageInputRef = useRef<HTMLInputElement>(null);
   const towerInputRef = useRef<HTMLInputElement>(null);
   const terrainInputRef = useRef<HTMLInputElement>(null);
@@ -14,14 +15,21 @@ export default function UploadManager() {
 
   useEffect(() => {
     updateStats();
-
     import('../lib/mapState').then(module => {
       setPackages([...module.getActivePackages()]);
-      module.subscribePmtilesFile(() => {
-        setPackages([...module.getActivePackages()]);
-      });
+      module.subscribePmtilesFile(() => setPackages([...module.getActivePackages()]));
     });
   }, []);
+
+  const openPicker = (ref: React.RefObject<HTMLInputElement | null>) => {
+    const input = ref.current;
+    if (!input) {
+      console.error('File picker input is not mounted');
+      return;
+    }
+    input.value = '';
+    input.click();
+  };
 
   const updateStats = async () => {
     const towers = await getTowers();
@@ -31,21 +39,14 @@ export default function UploadManager() {
   const handleTowerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const text = await file.text();
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
       let imported = 0;
       for (let i = 1; i < lines.length; i++) {
         const parts = lines[i].split(',').map(p => p.trim());
         if (parts.length >= 5) {
-          const tower: Tower = {
-            id: parts[0] || `T-${i}`,
-            name: parts[1],
-            lat: parseFloat(parts[2]),
-            lng: parseFloat(parts[3]),
-            height: parseFloat(parts[4])
-          };
+          const tower: Tower = { id: parts[0] || `T-${i}`, name: parts[1], lat: parseFloat(parts[2]), lng: parseFloat(parts[3]), height: parseFloat(parts[4]) };
           if (!isNaN(tower.lat) && !isNaN(tower.lng) && !isNaN(tower.height)) {
             await saveTower(tower);
             imported++;
@@ -57,25 +58,21 @@ export default function UploadManager() {
     } catch (err) {
       console.error('Failed to parse towers:', err);
       alert('Error parsing CSV file.');
-    } finally {
-      e.target.value = '';
-    }
+    } finally { e.target.value = ''; }
   };
 
   const handlePackageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    setBusy(true);
     try {
       const module = await import('../lib/mapState');
       const success = await module.addMapPackage(file);
       if (!success) alert('Failed to validate PMTiles package.');
     } catch (err) {
       console.error('Failed to install PMTiles package:', err);
-      alert('Failed to install PMTiles package.');
-    } finally {
-      e.target.value = '';
-    }
+      alert(`Failed to install PMTiles package: ${err instanceof Error ? err.message : String(err)}`);
+    } finally { setBusy(false); e.target.value = ''; }
   };
 
   const handleTerrainUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,26 +85,11 @@ export default function UploadManager() {
   const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-
     const firstPath = (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath || files[0].name;
     const folder = firstPath.includes('/') ? firstPath.split('/')[0] : firstPath;
     setSelectedFolder(folder);
-
-    const counts = files.reduce<Record<string, number>>((acc, file) => {
-      const name = file.name.toLowerCase();
-      const category = name.endsWith('.pmtiles') || name.endsWith('.mbtiles')
-        ? 'map'
-        : name.endsWith('.hgt') || name.endsWith('.tif') || name.endsWith('.tiff')
-          ? 'terrain'
-          : name.endsWith('.csv') || name.endsWith('.geojson') || name.endsWith('.json')
-            ? 'other'
-            : 'other';
-      acc[category] = (acc[category] || 0) + 1;
-      return acc;
-    }, {});
-
-    console.info('Selected map folder:', folder, 'Files:', files.length, counts);
-    alert(`Selected folder: ${folder}\nDetected ${files.length} file(s).\nUse the individual upload buttons to install supported files.`);
+    console.info('Selected map folder:', folder, 'Files:', files.length);
+    alert(`Selected folder: ${folder}\nDetected ${files.length} file(s).`);
     e.target.value = '';
   };
 
@@ -127,10 +109,7 @@ export default function UploadManager() {
   return (
     <div className="w-full h-full bg-white rounded-xl overflow-y-auto shadow-inner border-4 border-white p-6 md:p-8 space-y-8">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-        <h2 className="text-xl font-bold text-slate-800 flex items-center tracking-tight">
-          <Database className="w-6 h-6 mr-3 text-blue-600" />
-          Offline Data Storage
-        </h2>
+        <h2 className="text-xl font-bold text-slate-800 flex items-center tracking-tight"><Database className="w-6 h-6 mr-3 text-blue-600" />Offline Data Storage</h2>
         <span className="text-xs font-bold text-slate-500 uppercase tracking-widest hidden sm:block">Data Sources</span>
       </div>
 
@@ -141,78 +120,37 @@ export default function UploadManager() {
             <p className="text-sm text-slate-500 mt-1">Select a local folder containing PMTiles, HGT, GeoTIFF and other offline map data.</p>
             <p className="text-xs text-blue-600 mt-2 font-mono truncate">{selectedFolder}</p>
           </div>
-          <div className="flex gap-2 shrink-0">
-            <button type="button" onClick={() => folderInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors">
-              <FolderOpen className="w-4 h-4 mr-2" />
-              Select Map Folder
-            </button>
-            <input ref={folderInputRef} type="file" className="hidden" multiple {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={handleFolderSelect} />
+          <div className="relative shrink-0">
+            <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors cursor-pointer">
+              <FolderOpen className="w-4 h-4 mr-2" />Select Map Folder
+              <input ref={folderInputRef} type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" multiple {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={handleFolderSelect} />
+            </label>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="border rounded-lg p-5 bg-slate-50 md:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <MapIcon className="w-5 h-5 text-slate-600" />
-              <h3 className="font-medium text-slate-700">Offline Maps (PMTiles)</h3>
-            </div>
-            <span className="text-sm font-semibold px-2 py-1 rounded bg-blue-100 text-blue-700">{packages.length} Installed</span>
-          </div>
+          <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><MapIcon className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Offline Maps (PMTiles)</h3></div><span className="text-sm font-semibold px-2 py-1 rounded bg-blue-100 text-blue-700">{packages.length} Installed</span></div>
           <p className="text-sm text-slate-500 mb-4">Manage local .pmtiles map archives for offline map rendering.</p>
-          <div className="space-y-3 mb-6">
-            {packages.length === 0 ? (
-              <div className="text-center py-6 bg-white border border-dashed border-slate-300 rounded-lg text-slate-400 text-sm">No map packages installed.</div>
-            ) : (
-              packages.map(pkg => (
-                <div key={pkg.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    <button type="button" onClick={() => togglePackage(pkg.id, !pkg.enabled)} className="text-blue-600 focus:outline-none flex-shrink-0">
-                      {pkg.enabled ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5 text-slate-300" />}
-                    </button>
-                    <div className="flex flex-col truncate">
-                      <span className="font-semibold text-slate-800 text-sm truncate">{pkg.name}</span>
-                      <span className="text-xs text-slate-500">{(pkg.size / (1024 * 1024)).toFixed(2)} MB • {pkg.tileType === 1 ? 'Vector (MVT)' : 'Raster'} • Zoom {pkg.minZoom}-{pkg.maxZoom}</span>
-                    </div>
-                  </div>
-                  <button type="button" onClick={() => removePackage(pkg.id)} className="ml-4 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0" title="Remove package">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-          <div className="flex space-x-2">
-            <button type="button" onClick={() => packageInputRef.current?.click()} className="flex-1 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors">
-              <Upload className="w-4 h-4 mr-2" />
-              Install PMTiles Package
-            </button>
-            <input ref={packageInputRef} type="file" accept=".pmtiles" className="hidden" onChange={handlePackageUpload} />
+          <div className="space-y-3 mb-6">{packages.length === 0 ? <div className="text-center py-6 bg-white border border-dashed border-slate-300 rounded-lg text-slate-400 text-sm">No map packages installed.</div> : packages.map(pkg => <div key={pkg.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg shadow-sm"><div className="flex items-center space-x-3 flex-1 min-w-0"><button type="button" onClick={() => togglePackage(pkg.id, !pkg.enabled)} className="text-blue-600 focus:outline-none flex-shrink-0">{pkg.enabled ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5 text-slate-300" />}</button><div className="flex flex-col truncate"><span className="font-semibold text-slate-800 text-sm truncate">{pkg.name}</span><span className="text-xs text-slate-500">{(pkg.size / (1024 * 1024)).toFixed(2)} MB • {pkg.tileType === 1 ? 'Vector (MVT)' : 'Raster'} • Zoom {pkg.minZoom}-{pkg.maxZoom}</span></div></div><button type="button" onClick={() => removePackage(pkg.id)} className="ml-4 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0" title="Remove package"><Trash2 className="w-4 h-4" /></button></div>)}</div>
+          <div className="relative">
+            <button type="button" disabled={busy} onClick={() => openPicker(packageInputRef)} className="w-full cursor-pointer disabled:opacity-60 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />{busy ? 'Reading PMTiles…' : 'Install PMTiles Package'}</button>
+            <input ref={packageInputRef} type="file" accept=".pmtiles,application/octet-stream" className="sr-only" onChange={handlePackageUpload} />
           </div>
         </div>
 
         <div className="border rounded-lg p-5 bg-slate-50">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2"><RadioTower className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Tower Database</h3></div>
-            <span className="text-sm font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded">{towerCount} stored</span>
-          </div>
+          <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><RadioTower className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Tower Database</h3></div><span className="text-sm font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded">{towerCount} stored</span></div>
           <p className="text-sm text-slate-500 mb-4 h-10">Upload a CSV file containing tower data. Format: id,name,lat,lng,height</p>
-          <div className="flex space-x-2">
-            <button type="button" onClick={() => towerInputRef.current?.click()} className="flex-1 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />Upload CSV</button>
-            <input ref={towerInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleTowerUpload} />
-            <button type="button" onClick={async () => { if (confirm('Are you sure you want to delete all towers?')) { await clearTowers(); await updateStats(); } }} className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-colors" title="Clear all towers"><Trash2 className="w-4 h-4" /></button>
-          </div>
+          <div className="relative"><button type="button" onClick={() => openPicker(towerInputRef)} className="w-full cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />Upload CSV</button><input ref={towerInputRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={handleTowerUpload} /></div>
+          <button type="button" onClick={async () => { if (confirm('Are you sure you want to delete all towers?')) { await clearTowers(); await updateStats(); } }} className="mt-2 w-full px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-colors" title="Clear all towers"><Trash2 className="w-4 h-4 mx-auto" /></button>
         </div>
 
         <div className="border rounded-lg p-5 bg-slate-50">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2"><MapIcon className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Terrain Data</h3></div>
-            <span className="text-sm font-semibold bg-slate-200 text-slate-700 px-2 py-1 rounded">Pending</span>
-          </div>
+          <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><MapIcon className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Terrain Data</h3></div><span className="text-sm font-semibold bg-slate-200 text-slate-700 px-2 py-1 rounded">Pending</span></div>
           <p className="text-sm text-slate-500 mb-4 h-10">Upload SRTM (.hgt) or GeoTIFF (.tif) files for elevation profiles.</p>
-          <button type="button" onClick={() => terrainInputRef.current?.click()} className="w-full cursor-pointer bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />Upload Terrain File</button>
-          <input ref={terrainInputRef} type="file" accept=".hgt,.tif,.tiff" className="hidden" onChange={handleTerrainUpload} />
+          <div className="relative"><button type="button" onClick={() => openPicker(terrainInputRef)} className="w-full cursor-pointer bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />Upload Terrain File</button><input ref={terrainInputRef} type="file" accept=".hgt,.tif,.tiff,application/octet-stream,image/tiff" className="sr-only" onChange={handleTerrainUpload} /></div>
         </div>
       </div>
     </div>
