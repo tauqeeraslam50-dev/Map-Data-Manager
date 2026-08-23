@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import UploadManager from './components/UploadManager';
 import MapViewer from './components/MapViewer';
 import OnlineMapManager from './components/OnlineMapManager';
@@ -12,6 +12,12 @@ export default function App() {
     setActiveTab(tab);
     setMobileMenuOpen(false);
   };
+
+  useEffect(() => {
+    const openOfflineMap = () => selectTab('map');
+    window.addEventListener('rf-open-offline-map', openOfflineMap);
+    return () => window.removeEventListener('rf-open-offline-map', openOfflineMap);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 text-slate-900 overflow-hidden font-sans">
@@ -32,7 +38,7 @@ export default function App() {
         <aside className={`${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative z-50 w-72 h-full bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out`}>
           <div className="p-4 border-b border-slate-100 bg-slate-50"><h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Active Modules</h2></div>
           <div className="flex-1 p-4 space-y-2 overflow-y-auto">
-            <button onClick={() => selectTab('map')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'map' ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold shadow-sm' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><MapIcon className={`w-5 h-5 ${activeTab === 'map' ? 'text-blue-600' : 'text-slate-400'}`} /><span>Field Map</span></button>
+            <button onClick={() => selectTab('map')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'map' ? 'bg-green-50 border-green-200 text-green-700 font-semibold shadow-sm' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><MapIcon className={`w-5 h-5 ${activeTab === 'map' ? 'text-green-600' : 'text-slate-400'}`} /><span>Offline Map View</span></button>
             <button onClick={() => selectTab('online')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'online' ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold shadow-sm' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><Globe2 className={`w-5 h-5 ${activeTab === 'online' ? 'text-blue-600' : 'text-slate-400'}`} /><span>Online Map & Download</span></button>
             <button onClick={() => selectTab('data')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'data' ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold shadow-sm' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><Database className={`w-5 h-5 ${activeTab === 'data' ? 'text-blue-600' : 'text-slate-400'}`} /><span>PMTiles & Data Manager</span></button>
           </div>
