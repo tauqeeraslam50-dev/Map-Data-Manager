@@ -19,6 +19,8 @@ export interface MapPackage {
   maxZoom: number;
   /** Vector source-layer IDs discovered from PMTiles metadata. */
   vectorLayers?: string[];
+  /** PMTiles geographic bounds: [minLon, minLat, maxLon, maxLat]. */
+  bounds?: [number, number, number, number];
 }
 
 interface RFDatabase extends DBSchema {
@@ -40,7 +42,7 @@ let dbPromise: Promise<IDBPDatabase<RFDatabase>> | null = null;
 
 export function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<RFDatabase>('rf-offline-manager', 3, {
+    dbPromise = openDB<RFDatabase>('rf-offline-manager', 4, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           db.createObjectStore('towers', { keyPath: 'id' });
@@ -52,8 +54,8 @@ export function getDB() {
             db.deleteObjectStore('tiles' as any);
           }
         }
-        // Version 3 only expands the MapPackage TypeScript metadata.
-        // No object-store migration is required because existing records remain valid.
+        // Versions 3 and 4 only add metadata fields to MapPackage.
+        // No object-store migration is required.
       },
     });
   }
@@ -73,7 +75,6 @@ export async function getMapPackages(): Promise<MapPackage[]> {
 export async function deleteMapPackage(id: string) {
   const db = await getDB();
   await db.delete('mapPackages', id);
-  
   try {
     const root = await navigator.storage.getDirectory();
     await root.removeEntry(id);
@@ -86,7 +87,6 @@ export async function clearMapPackages() {
   const db = await getDB();
   const pkgs = await db.getAll('mapPackages');
   await db.clear('mapPackages');
-  
   try {
     const root = await navigator.storage.getDirectory();
     for (const pkg of pkgs) {
@@ -97,7 +97,7 @@ export async function clearMapPackages() {
       }
     }
   } catch (e) {
-    // Ignore OPFS access error
+    // Ignore
   }
 }
 
