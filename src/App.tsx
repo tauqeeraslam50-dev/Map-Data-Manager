@@ -92,7 +92,7 @@ export default function App() {
           <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></div> MAP ENGINE: OK</span>
           <span>STORAGE: IDB</span>
         </div>
-        <div>PAKISTAN NATIONAL RF MAPPING UTILITY • SECURE FIELD ACCESS ONLY</div>
+        <div>RF MAPPING UTILITY • SECURE FIELD ACCESS ONLY</div>
       </footer>
     </div>
   );

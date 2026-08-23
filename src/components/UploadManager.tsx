@@ -138,19 +138,17 @@ export default function UploadManager() {
   };
 
   const removePackage = async (id: string) => {
-    if (confirm('Are you sure you want to remove this map package?')) {
-      setBusy(true);
-      try {
-        const db = await import('../lib/db');
-        await db.deleteMapPackage(id);
-        const module = await import('../lib/mapState');
-        await module.loadPackagesFromDb();
-      } catch (err) {
-        console.error('Failed to remove package', err);
-        alert('Failed to remove package');
-      } finally {
-        setBusy(false);
-      }
+    setBusy(true);
+    try {
+      const db = await import('../lib/db');
+      await db.deleteMapPackage(id);
+      const module = await import('../lib/mapState');
+      await module.loadPackagesFromDb();
+    } catch (err) {
+      console.error('Failed to remove package', err);
+      alert('Failed to remove package');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -192,7 +190,7 @@ export default function UploadManager() {
           <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><RadioTower className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Tower Database</h3></div><span className="text-sm font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded">{towerCount} stored</span></div>
           <p className="text-sm text-slate-500 mb-4 h-10">Upload a CSV file containing tower data. Format: id,name,lat,lng,height</p>
           <div className="relative"><button type="button" onClick={() => openPicker(towerInputRef)} className="w-full cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />Upload CSV</button><input ref={towerInputRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={handleTowerUpload} /></div>
-          <button type="button" disabled={busy} onClick={async () => { if (confirm('Are you sure you want to delete all towers?')) { setBusy(true); await clearTowers(); await updateStats(); setBusy(false); } }} className="mt-2 w-full px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50" title="Clear all towers"><Trash2 className="w-4 h-4 mx-auto" /></button>
+          <button type="button" disabled={busy} onClick={async () => { setBusy(true); await clearTowers(); await updateStats(); setBusy(false); }} className="mt-2 w-full px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50" title="Clear all towers"><Trash2 className="w-4 h-4 mx-auto" /></button>
         </div>
 
         <div className="border rounded-lg p-5 bg-slate-50">
