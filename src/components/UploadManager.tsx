@@ -15,10 +15,14 @@ export default function UploadManager() {
 
   useEffect(() => {
     updateStats();
+    let unsubscribe: (() => void) | undefined;
     import('../lib/mapState').then(module => {
       setPackages([...module.getActivePackages()]);
-      module.subscribePmtilesFile(() => setPackages([...module.getActivePackages()]));
+      unsubscribe = module.subscribePmtilesFile(() => setPackages([...module.getActivePackages()]));
     });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const openPicker = (ref: React.RefObject<HTMLInputElement | null>) => {
@@ -82,14 +86,50 @@ export default function UploadManager() {
     e.target.value = '';
   };
 
-  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const firstPath = (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath || files[0].name;
     const folder = firstPath.includes('/') ? firstPath.split('/')[0] : firstPath;
     setSelectedFolder(folder);
     console.info('Selected map folder:', folder, 'Files:', files.length);
-    alert(`Selected folder: ${folder}\nDetected ${files.length} file(s).`);
+    
+    const pmtilesFiles = files.filter(f => f.name.toLowerCase().endsWith('.pmtiles'));
+    const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'));
+
+    if (pmtilesFiles.length > 0 || csvFiles.length > 0) {
+      setBusy(true);
+      try {
+        const module = await import('../lib/mapState');
+        for (const file of pmtilesFiles) {
+          await module.addMapPackage(file);
+        }
+        
+        for (const file of csvFiles) {
+          const text = await file.text();
+          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+          for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(',').map(p => p.trim());
+            if (parts.length >= 5) {
+              const tower: Tower = { id: parts[0] || `T-${i}`, name: parts[1], lat: parseFloat(parts[2]), lng: parseFloat(parts[3]), height: parseFloat(parts[4]) };
+              if (!isNaN(tower.lat) && !isNaN(tower.lng) && !isNaN(tower.height)) {
+                await saveTower(tower);
+              }
+            }
+          }
+        }
+        await updateStats();
+        alert(`Successfully imported ${pmtilesFiles.length} map package(s) and parsed ${csvFiles.length} tower file(s) from ${folder}.`);
+      } catch (err) {
+        console.error('Failed to process folder:', err);
+        alert('An error occurred while processing the folder.');
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      alert(`Selected folder: ${folder}\nDetected ${files.length} file(s) but no PMTiles or CSV files found.`);
+    }
+
     e.target.value = '';
   };
 
@@ -97,12 +137,20 @@ export default function UploadManager() {
     import('../lib/mapState').then(module => module.togglePackage(id, enabled));
   };
 
-  const removePackage = (id: string) => {
+  const removePackage = async (id: string) => {
     if (confirm('Are you sure you want to remove this map package?')) {
-      import('../lib/db').then(async db => {
+      setBusy(true);
+      try {
+        const db = await import('../lib/db');
         await db.deleteMapPackage(id);
-        import('../lib/mapState').then(module => module.loadPackagesFromDb());
-      });
+        const module = await import('../lib/mapState');
+        await module.loadPackagesFromDb();
+      } catch (err) {
+        console.error('Failed to remove package', err);
+        alert('Failed to remove package');
+      } finally {
+        setBusy(false);
+      }
     }
   };
 
@@ -144,7 +192,7 @@ export default function UploadManager() {
           <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><RadioTower className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Tower Database</h3></div><span className="text-sm font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded">{towerCount} stored</span></div>
           <p className="text-sm text-slate-500 mb-4 h-10">Upload a CSV file containing tower data. Format: id,name,lat,lng,height</p>
           <div className="relative"><button type="button" onClick={() => openPicker(towerInputRef)} className="w-full cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />Upload CSV</button><input ref={towerInputRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={handleTowerUpload} /></div>
-          <button type="button" onClick={async () => { if (confirm('Are you sure you want to delete all towers?')) { await clearTowers(); await updateStats(); } }} className="mt-2 w-full px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-colors" title="Clear all towers"><Trash2 className="w-4 h-4 mx-auto" /></button>
+          <button type="button" disabled={busy} onClick={async () => { if (confirm('Are you sure you want to delete all towers?')) { setBusy(true); await clearTowers(); await updateStats(); setBusy(false); } }} className="mt-2 w-full px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50" title="Clear all towers"><Trash2 className="w-4 h-4 mx-auto" /></button>
         </div>
 
         <div className="border rounded-lg p-5 bg-slate-50">

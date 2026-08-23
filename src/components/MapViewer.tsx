@@ -15,6 +15,8 @@ export default function MapViewer() {
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const lineSourceId = 'los-line';
 
+  const [mapLoaded, setMapLoaded] = useState(false);
+
   useEffect(() => {
     getTowers().then(setTowers);
   }, []);
@@ -53,7 +55,7 @@ export default function MapViewer() {
         if (!pkg.enabled || !map.current) return;
 
         const sourceId = `pmtiles-pkg-${pkg.id}`;
-        const archiveUrl = `pmtiles://${pkg.name}`;
+        const archiveUrl = `pmtiles://${pkg.id}`;
         const isVector = pkg.tileType === 1;
 
         if (isVector) {
@@ -197,6 +199,7 @@ export default function MapViewer() {
       });
 
       updatePmtilesLayer();
+      setMapLoaded(true);
     };
 
     map.current.on('load', handleMapLoad);
@@ -227,7 +230,7 @@ export default function MapViewer() {
 
   // Update markers.
   useEffect(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return;
+    if (!map.current || !mapLoaded) return;
 
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
@@ -255,7 +258,7 @@ export default function MapViewer() {
 
       markersRef.current.push(marker);
     });
-  }, [towers, selectedTowers]);
+  }, [towers, selectedTowers, mapLoaded]);
 
   // Update LoS line and calculations.
   useEffect(() => {
@@ -265,7 +268,7 @@ export default function MapViewer() {
       const los = calculateLineOfSight(dist, t1.height, t2.height);
       setLosResult({ distance: dist, ...los });
 
-      if (map.current && map.current.getSource(lineSourceId)) {
+      if (map.current && mapLoaded && map.current.getSource(lineSourceId)) {
         const source = map.current.getSource(lineSourceId) as maplibregl.GeoJSONSource;
         source.setData({
           type: 'Feature',
@@ -287,7 +290,7 @@ export default function MapViewer() {
       }
     } else {
       setLosResult(null);
-      if (map.current && map.current.getSource(lineSourceId)) {
+      if (map.current && mapLoaded && map.current.getSource(lineSourceId)) {
         const source = map.current.getSource(lineSourceId) as maplibregl.GeoJSONSource;
         source.setData({
           type: 'Feature',
@@ -299,7 +302,7 @@ export default function MapViewer() {
         });
       }
     }
-  }, [selectedTowers]);
+  }, [selectedTowers, mapLoaded]);
 
   return (
     <div className="w-full h-full bg-slate-300 rounded-xl overflow-hidden shadow-inner flex flex-col relative border-4 border-white">

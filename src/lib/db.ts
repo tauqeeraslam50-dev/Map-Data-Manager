@@ -73,11 +73,32 @@ export async function getMapPackages(): Promise<MapPackage[]> {
 export async function deleteMapPackage(id: string) {
   const db = await getDB();
   await db.delete('mapPackages', id);
+  
+  try {
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry(id);
+  } catch (e) {
+    // Ignore if not in OPFS
+  }
 }
 
 export async function clearMapPackages() {
   const db = await getDB();
+  const pkgs = await db.getAll('mapPackages');
   await db.clear('mapPackages');
+  
+  try {
+    const root = await navigator.storage.getDirectory();
+    for (const pkg of pkgs) {
+      try {
+        await root.removeEntry(pkg.id);
+      } catch (e) {
+        // Ignore
+      }
+    }
+  } catch (e) {
+    // Ignore OPFS access error
+  }
 }
 
 export async function saveTower(tower: Tower) {

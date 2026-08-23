@@ -16,15 +16,32 @@ function getVectorLayerIds(metadata: any): string[] {
     .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
 }
 
+class CustomFileSource implements pmtiles.Source {
+  file: File;
+  id: string;
+  constructor(file: File, id: string) {
+    this.file = file;
+    this.id = id;
+  }
+  getKey() {
+    return this.id;
+  }
+  async getBytes(offset: number, length: number) {
+    const slice = this.file.slice(offset, offset + length);
+    const buffer = await slice.arrayBuffer();
+    return { data: buffer };
+  }
+}
+
 async function preparePackage(pkg: MapPackage) {
   if (!pkg.file) return;
 
   try {
-    const fileSource = new pmtiles.FileSource(pkg.file);
-    const archive = new pmtiles.PMTiles(fileSource);
+    const source = new CustomFileSource(pkg.file, pkg.id);
+    const archive = new pmtiles.PMTiles(source);
 
     // Register the archive with the protocol so MapLibre can request tiles
-    // through pmtiles://<filename> without loading the whole archive into RAM.
+    // through pmtiles://<pkg.id> without loading the whole archive into RAM.
     pmtilesProtocol.add(archive);
 
     // Read archive metadata once. This lets the renderer use the real
@@ -45,6 +62,25 @@ async function preparePackage(pkg: MapPackage) {
 
 export async function loadPackagesFromDb() {
   const pkgs = await getMapPackages();
+  
+  let root: FileSystemDirectoryHandle | null = null;
+  try {
+    root = await navigator.storage.getDirectory();
+  } catch (e) {
+    console.warn("OPFS not available, relying on IDB blob storage.", e);
+  }
+
+  for (const pkg of pkgs) {
+    if (root) {
+      try {
+        const handle = await root.getFileHandle(pkg.id);
+        pkg.file = await handle.getFile();
+      } catch (e) {
+        console.warn(`File ${pkg.id} not found in OPFS, falling back to IDB blob.`);
+      }
+    }
+  }
+
   currentPackages = pkgs;
 
   await Promise.all(
@@ -64,7 +100,8 @@ export function getActivePackages() {
 
 export async function addMapPackage(file: File) {
   try {
-    const source = new pmtiles.FileSource(file);
+    const tempId = "temp-" + Date.now();
+    const source = new CustomFileSource(file, tempId);
     const archive = new pmtiles.PMTiles(source);
     const header = await archive.getHeader();
 
@@ -74,8 +111,23 @@ export async function addMapPackage(file: File) {
       vectorLayers = getVectorLayerIds(metadata);
     }
 
+    const safeId = Date.now().toString() + "-" + file.name.replace(/[^a-zA-Z0-9-]/g, '');
+
+    try {
+      const root = await navigator.storage.getDirectory();
+      const handle = await root.getFileHandle(safeId, { create: true });
+      // Use createWritable if available, or fallback
+      if ('createWritable' in handle) {
+        const writable = await (handle as any).createWritable();
+        await writable.write(file);
+        await writable.close();
+      }
+    } catch (e) {
+      console.warn("Failed to write to OPFS", e);
+    }
+
     const pkg: MapPackage = {
-      id: Date.now().toString() + "-" + file.name,
+      id: safeId,
       name: file.name,
       file,
       size: file.size,
