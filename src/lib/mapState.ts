@@ -37,24 +37,28 @@ async function preparePackage(pkg: MapPackage) {
   if (!pkg.file) return;
 
   try {
+    // Always register the archive using the same package id used by the
+    // MapLibre source URL. This is important for locally uploaded files.
     const source = new CustomFileSource(pkg.file, pkg.id);
     const archive = new pmtiles.PMTiles(source);
-
-    // Register the archive with the protocol so MapLibre can request tiles
-    // through pmtiles://<pkg.id> without loading the whole archive into RAM.
     pmtilesProtocol.add(archive);
 
-    // Read archive metadata once. This lets the renderer use the real
-    // vector source-layer IDs instead of assuming a layer named "default".
-    if (pkg.tileType === 1 && (!pkg.vectorLayers || pkg.vectorLayers.length === 0)) {
+    const header = await archive.getHeader();
+
+    // Keep the real archive bounds so the map can automatically move to the
+    // uploaded dataset instead of relying on a hard-coded starting position.
+    if (Number.isFinite(header.minLon) && Number.isFinite(header.minLat) &&
+        Number.isFinite(header.maxLon) && Number.isFinite(header.maxLat)) {
+      pkg.bounds = [header.minLon, header.minLat, header.maxLon, header.maxLat];
+    }
+
+    if (header.tileType === 1) {
       const metadata = await archive.getMetadata();
       const vectorLayers = getVectorLayerIds(metadata);
-
-      if (vectorLayers.length > 0) {
-        pkg.vectorLayers = vectorLayers;
-        await saveMapPackage(pkg);
-      }
+      pkg.vectorLayers = vectorLayers;
     }
+
+    await saveMapPackage(pkg);
   } catch (error) {
     console.error(`Failed to prepare PMTiles package ${pkg.name}:`, error);
   }
@@ -62,7 +66,7 @@ async function preparePackage(pkg: MapPackage) {
 
 export async function loadPackagesFromDb() {
   const pkgs = await getMapPackages();
-  
+
   let root: FileSystemDirectoryHandle | null = null;
   try {
     root = await navigator.storage.getDirectory();
@@ -85,12 +89,18 @@ export async function loadPackagesFromDb() {
 
   await Promise.all(
     currentPackages
-      .filter(pkg => pkg.enabled)
+      .filter(pkg => pkg.enabled && pkg.file)
       .map(pkg => preparePackage(pkg))
   );
 
-  // Refresh after metadata discovery so the UI can display the real layers.
-  currentPackages = await getMapPackages();
+  // preparePackage may have discovered metadata/bounds, so refresh the
+  // package list and keep the File object available for the renderer.
+  const refreshed = await getMapPackages();
+  for (const pkg of refreshed) {
+    const original = currentPackages.find(p => p.id === pkg.id);
+    if (original?.file) pkg.file = original.file;
+  }
+  currentPackages = refreshed;
   notifyListeners();
 }
 
@@ -116,14 +126,13 @@ export async function addMapPackage(file: File) {
     try {
       const root = await navigator.storage.getDirectory();
       const handle = await root.getFileHandle(safeId, { create: true });
-      // Use createWritable if available, or fallback
       if ('createWritable' in handle) {
         const writable = await (handle as any).createWritable();
         await writable.write(file);
         await writable.close();
       }
     } catch (e) {
-      console.warn("Failed to write to OPFS", e);
+      console.warn("Failed to write to OPFS; IndexedDB copy will be used", e);
     }
 
     const pkg: MapPackage = {
@@ -135,7 +144,8 @@ export async function addMapPackage(file: File) {
       enabled: true,
       minZoom: header.minZoom,
       maxZoom: header.maxZoom,
-      vectorLayers
+      vectorLayers,
+      bounds: [header.minLon, header.minLat, header.maxLon, header.maxLat]
     };
 
     await saveMapPackage(pkg);
@@ -165,5 +175,4 @@ function notifyListeners() {
   listeners.forEach(l => l());
 }
 
-// Kick off the initial load without blocking application startup.
 void loadPackagesFromDb();
