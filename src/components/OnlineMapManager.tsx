@@ -48,8 +48,10 @@ export default function OnlineMapManager() {
     registerOfflineProtocol(); setDownloading(true); setProgress(0); setMessage(`Downloading tiles to ${folderName}...`);
     try {
       const result = await downloadTileRegion(template, minLat, minLng, maxLat, maxLng, minZoom, maxZoom, (done, total) => setProgress(Math.round((done / total) * 100)));
-      localStorage.setItem('rf-map-mode', 'offline'); window.dispatchEvent(new CustomEvent('rf-map-mode-changed', { detail: 'offline' }));
-      setMessage(`Download complete. ${result.savedToFolder.toLocaleString()} map files saved in ${result.directory}. Field Map is now OFFLINE.`);
+      localStorage.setItem('rf-map-mode', 'offline');
+      window.dispatchEvent(new CustomEvent('rf-map-mode-changed', { detail: 'offline' }));
+      window.dispatchEvent(new CustomEvent('rf-open-offline-map'));
+      setMessage(`Download complete. ${result.savedToFolder.toLocaleString()} map files saved in ${result.directory}. Opening Offline Map View...`);
     } catch (error) { setMessage(`Download failed: ${error instanceof Error ? error.message : String(error)}`); }
     finally { setDownloading(false); }
   };
@@ -57,7 +59,7 @@ export default function OnlineMapManager() {
   const scanSelectedFolder = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files?.length) return;
-    setImporting(true);
+    setImporting(true); setProgress(0);
     setMessage(`Scanning the selected folder and all subfolders: ${files.length.toLocaleString()} files found...`);
     try {
       registerOfflineProtocol();
@@ -68,7 +70,8 @@ export default function OnlineMapManager() {
       }
       localStorage.setItem('rf-map-mode', 'offline');
       window.dispatchEvent(new CustomEvent('rf-map-mode-changed', { detail: 'offline' }));
-      setMessage(`Folder scan complete. Imported ${result.imported.toLocaleString()} map tiles from ${files.length.toLocaleString()} files. Zoom levels: ${result.zooms.join(', ')}. Field Map is now OFFLINE.`);
+      window.dispatchEvent(new CustomEvent('rf-open-offline-map'));
+      setMessage(`Folder scan complete. Imported ${result.imported.toLocaleString()} map tiles from ${files.length.toLocaleString()} files. Zoom levels: ${result.zooms.join(', ')}. Opening Offline Map View...`);
     } catch (error) { setMessage(`Folder scan failed: ${error instanceof Error ? error.message : String(error)}`); }
     finally { setImporting(false); setProgress(0); event.target.value = ''; }
   };
@@ -113,7 +116,7 @@ export default function OnlineMapManager() {
           {message && <div className="p-3 rounded bg-blue-50 border border-blue-200 text-xs text-blue-800 leading-tight">{message}</div>}
         </div>
       </div>
-      <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed shrink-0"><strong>Offline workflow:</strong> Select one parent map folder. The application scans all files and subfolders, identifies XYZ map tiles such as <b>zoom/x/y.png</b>, imports them into the offline cache, and switches the Field Map to OFFLINE automatically.</div>
+      <div className="p-4 rounded-lg bg-green-50 border border-green-200 text-xs text-green-800 leading-relaxed shrink-0"><strong>Offline workflow:</strong> Select one parent map folder. The application scans all files and subfolders, identifies XYZ map tiles such as <b>zoom/x/y.png</b>, imports them into the offline cache, and opens <b>Offline Map View</b> automatically.</div>
     </div>
   );
 }
