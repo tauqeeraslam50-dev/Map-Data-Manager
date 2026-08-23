@@ -16,153 +16,16 @@ function openTileDB(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error);
   });
 }
-
-async function putTile(key: string, blob: Blob) {
-  const db = await openTileDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(blob, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-}
-
-export async function chooseDownloadDirectory(): Promise<string> {
-  const picker = (window as any).showDirectoryPicker;
-  if (typeof picker !== 'function') throw new Error('Folder selection is not supported here. Use Chrome/Edge desktop, or use Select Folder & Scan Offline Maps.');
-  selectedDirectory = await picker({ mode: 'readwrite' });
-  selectedDirectoryName = selectedDirectory?.name || null;
-  return selectedDirectoryName || 'Selected folder';
-}
-
+async function putTile(key: string, blob: Blob) { const db = await openTileDB(); await new Promise<void>((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(blob, key); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); db.close(); }
+export async function chooseDownloadDirectory(): Promise<string> { const picker = (window as any).showDirectoryPicker; if (typeof picker !== 'function') throw new Error('Use the Electron desktop app for direct Windows folder access.'); selectedDirectory = await picker({ mode: 'readwrite' }); selectedDirectoryName = selectedDirectory?.name || null; return selectedDirectoryName || 'Selected folder'; }
 export function getSelectedDirectoryName() { return selectedDirectoryName; }
-
-async function saveTileToDirectory(z: number, x: number, y: number, blob: Blob) {
-  if (!selectedDirectory) return;
-  const zDir = await selectedDirectory.getDirectoryHandle(String(z), { create: true });
-  const xDir = await zDir.getDirectoryHandle(String(x), { create: true });
-  const fileHandle = await xDir.getFileHandle(`${y}.png`, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
-}
-
-export async function getCachedTile(key: string): Promise<ArrayBuffer | null> {
-  const db = await openTileDB();
-  const value = await new Promise<Blob | undefined>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const request = tx.objectStore(STORE).get(key);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return value ? value.arrayBuffer() : null;
-}
-
-export async function clearOfflineTiles() {
-  const db = await openTileDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-  localStorage.removeItem('rf-offline-bounds');
-}
-
+async function saveTileToDirectory(z: number, x: number, y: number, blob: Blob) { if (!selectedDirectory) return; const zDir = await selectedDirectory.getDirectoryHandle(String(z), { create: true }); const xDir = await zDir.getDirectoryHandle(String(x), { create: true }); const fileHandle = await xDir.getFileHandle(`${y}.png`, { create: true }); const writable = await fileHandle.createWritable(); await writable.write(blob); await writable.close(); }
+export async function getCachedTile(key: string): Promise<ArrayBuffer | null> { const db = await openTileDB(); const value = await new Promise<Blob | undefined>((resolve, reject) => { const tx = db.transaction(STORE, 'readonly'); const request = tx.objectStore(STORE).get(key); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); }); db.close(); return value ? value.arrayBuffer() : null; }
+export async function clearOfflineTiles() { const db = await openTileDB(); await new Promise<void>((resolve, reject) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).clear(); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); db.close(); localStorage.removeItem('rf-offline-bounds'); }
 export function tileKey(z: number, x: number, y: number) { return `${z}/${x}/${y}`; }
-
-function tileRange(minLat: number, minLng: number, maxLat: number, maxLng: number, zoom: number) {
-  const n = 2 ** zoom;
-  const clampLat = (lat: number) => Math.max(-85.05112878, Math.min(85.05112878, lat));
-  const toX = (lng: number) => Math.floor(((lng + 180) / 360) * n);
-  const toY = (lat: number) => { const r = clampLat(lat) * Math.PI / 180; return Math.floor((1 - Math.asinh(Math.tan(r)) / Math.PI) / 2 * n); };
-  return { minX: Math.max(0, Math.min(n - 1, toX(Math.min(minLng, maxLng)))), maxX: Math.max(0, Math.min(n - 1, toX(Math.max(minLng, maxLng)))), minY: Math.max(0, Math.min(n - 1, toY(Math.max(minLat, maxLat)))), maxY: Math.max(0, Math.min(n - 1, toY(Math.min(minLat, maxLat)))) };
-}
-
-export function estimateDownload(minLat: number, minLng: number, maxLat: number, maxLng: number, minZoom: number, maxZoom: number) {
-  let total = 0;
-  for (let z = minZoom; z <= maxZoom; z++) { const r = tileRange(minLat, minLng, maxLat, maxLng, z); total += Math.max(0, r.maxX - r.minX + 1) * Math.max(0, r.maxY - r.minY + 1); }
-  return total;
-}
-
-export async function downloadTileRegion(template: string, minLat: number, minLng: number, maxLat: number, maxLng: number, minZoom: number, maxZoom: number, onProgress?: (done: number, total: number) => void) {
-  const total = estimateDownload(minLat, minLng, maxLat, maxLng, minZoom, maxZoom);
-  let done = 0;
-  let savedToFolder = 0;
-  for (let z = minZoom; z <= maxZoom; z++) {
-    const range = tileRange(minLat, minLng, maxLat, maxLng, z);
-    for (let x = range.minX; x <= range.maxX; x++) {
-      for (let y = range.minY; y <= range.maxY; y++) {
-        try {
-          const url = template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
-          const response = await fetch(url, { mode: 'cors' });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const blob = await response.blob();
-          await putTile(tileKey(z, x, y), blob);
-          if (selectedDirectory) { await saveTileToDirectory(z, x, y, blob); savedToFolder++; }
-        } catch (error) { console.warn('Tile download failed:', `${z}/${x}/${y}`, error); }
-        done++;
-        onProgress?.(done, total);
-      }
-    }
-  }
-  localStorage.setItem('rf-offline-bounds', JSON.stringify({ minLat, minLng, maxLat, maxLng }));
-  return { done, total, savedToFolder, directory: selectedDirectoryName };
-}
-
-function tileToBounds(z: number, x: number, y: number) {
-  const n = 2 ** z;
-  const lon1 = x / n * 360 - 180;
-  const lon2 = (x + 1) / n * 360 - 180;
-  const latFromY = (tileY: number) => 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * tileY / n)));
-  const lat1 = latFromY(y);
-  const lat2 = latFromY(y + 1);
-  return { minLat: Math.min(lat1, lat2), maxLat: Math.max(lat1, lat2), minLng: Math.min(lon1, lon2), maxLng: Math.max(lon1, lon2) };
-}
-
-/** Select one parent folder. The browser returns every file in that folder and all subfolders. */
-export async function importTileFolder(files: FileList | File[], onProgress?: (done: number, total: number) => void): Promise<{ imported: number; skipped: number; zooms: number[] }> {
-  const list = Array.from(files);
-  let imported = 0;
-  let skipped = 0;
-  let done = 0;
-  const total = list.length;
-  const zooms = new Set<number>();
-  let bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null = null;
-
-  for (const file of list) {
-    const relativePath = ((file as any).webkitRelativePath || file.name || '').replace(/\\/g, '/');
-    const match = relativePath.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
-    if (!match) { skipped++; done++; onProgress?.(done, total); continue; }
-    const z = Number(match[1]);
-    const x = Number(match[2]);
-    const y = Number(match[3]);
-    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) { skipped++; done++; onProgress?.(done, total); continue; }
-    await putTile(tileKey(z, x, y), file);
-    const b = tileToBounds(z, x, y);
-    bounds = bounds ? { minLat: Math.min(bounds.minLat, b.minLat), minLng: Math.min(bounds.minLng, b.minLng), maxLat: Math.max(bounds.maxLat, b.maxLat), maxLng: Math.max(bounds.maxLng, b.maxLng) } : b;
-    zooms.add(z);
-    imported++;
-    done++;
-    onProgress?.(done, total);
-  }
-
-  if (bounds) localStorage.setItem('rf-offline-bounds', JSON.stringify(bounds));
-  return { imported, skipped, zooms: Array.from(zooms).sort((a, b) => a - b) };
-}
-
-export function registerOfflineProtocol() {
-  if (protocolRegistered) return;
-  maplibregl.addProtocol('offline', async (params, abortController) => {
-    const match = params.url.match(/^offline:\/\/tiles\/(\d+)\/(\d+)\/(\d+)/);
-    if (!match) throw new Error('Invalid offline tile URL');
-    const data = await getCachedTile(tileKey(Number(match[1]), Number(match[2]), Number(match[3])));
-    if (abortController.signal.aborted) throw new Error('Request aborted');
-    if (!data) throw new Error('Tile is not cached');
-    return { data };
-  });
-  protocolRegistered = true;
-}
+function tileRange(minLat: number, minLng: number, maxLat: number, maxLng: number, zoom: number) { const n = 2 ** zoom; const clampLat = (lat: number) => Math.max(-85.05112878, Math.min(85.05112878, lat)); const toX = (lng: number) => Math.floor(((lng + 180) / 360) * n); const toY = (lat: number) => { const r = clampLat(lat) * Math.PI / 180; return Math.floor((1 - Math.asinh(Math.tan(r)) / Math.PI) / 2 * n); }; return { minX: Math.max(0, Math.min(n - 1, toX(Math.min(minLng, maxLng)))), maxX: Math.max(0, Math.min(n - 1, toX(Math.max(minLng, maxLng)))), minY: Math.max(0, Math.min(n - 1, toY(Math.max(minLat, maxLat)))), maxY: Math.max(0, Math.min(n - 1, toY(Math.min(minLat, maxLat)))) }; }
+export function estimateDownload(minLat: number, minLng: number, maxLat: number, maxLng: number, minZoom: number, maxZoom: number) { let total = 0; for (let z = minZoom; z <= maxZoom; z++) { const r = tileRange(minLat, minLng, maxLat, maxLng, z); total += Math.max(0, r.maxX - r.minX + 1) * Math.max(0, r.maxY - r.minY + 1); } return total; }
+export async function downloadTileRegion(template: string, minLat: number, minLng: number, maxLat: number, maxLng: number, minZoom: number, maxZoom: number, onProgress?: (done: number, total: number) => void) { const total = estimateDownload(minLat, minLng, maxLat, maxLng, minZoom, maxZoom); let done = 0, savedToFolder = 0; for (let z = minZoom; z <= maxZoom; z++) { const range = tileRange(minLat, minLng, maxLat, maxLng, z); for (let x = range.minX; x <= range.maxX; x++) for (let y = range.minY; y <= range.maxY; y++) { try { const tileUrl = template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)); const response = await fetch(tileUrl, { mode: 'cors' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const blob = await response.blob(); await putTile(tileKey(z, x, y), blob); if (selectedDirectory) { await saveTileToDirectory(z, x, y, blob); savedToFolder++; } } catch (error) { console.warn('Tile download failed:', `${z}/${x}/${y}`, error); } done++; onProgress?.(done, total); } } localStorage.setItem('rf-offline-bounds', JSON.stringify({ minLat, minLng, maxLat, maxLng })); return { done, total, savedToFolder, directory: selectedDirectoryName }; }
+function tileToBounds(z: number, x: number, y: number) { const n = 2 ** z; const lon1 = x / n * 360 - 180, lon2 = (x + 1) / n * 360 - 180; const latFromY = (tileY: number) => 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * tileY / n))); const lat1 = latFromY(y), lat2 = latFromY(y + 1); return { minLat: Math.min(lat1, lat2), maxLat: Math.max(lat1, lat2), minLng: Math.min(lon1, lon2), maxLng: Math.max(lon1, lon2) }; }
+export async function importTileFolder(files: FileList | File[], onProgress?: (done: number, total: number) => void): Promise<{ imported: number; skipped: number; zooms: number[] }> { const list = Array.from(files); let imported = 0, skipped = 0, done = 0; const total = list.length; const zooms = new Set<number>(); let bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null = null; for (const file of list) { const relativePath = ((file as any).webkitRelativePath || file.name || '').replace(/\\/g, '/'); const match = relativePath.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i); if (!match) { skipped++; done++; onProgress?.(done, total); continue; } const z = Number(match[1]), x = Number(match[2]), y = Number(match[3]); if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) { skipped++; done++; onProgress?.(done, total); continue; } await putTile(tileKey(z, x, y), file); const b = tileToBounds(z, x, y); bounds = bounds ? { minLat: Math.min(bounds.minLat, b.minLat), minLng: Math.min(bounds.minLng, b.minLng), maxLat: Math.max(bounds.maxLat, b.maxLat), maxLng: Math.max(bounds.maxLng, b.maxLng) } : b; zooms.add(z); imported++; done++; onProgress?.(done, total); } if (bounds) localStorage.setItem('rf-offline-bounds', JSON.stringify(bounds)); return { imported, skipped, zooms: Array.from(zooms).sort((a, b) => a - b) }; }
+export function registerOfflineProtocol() { if (protocolRegistered) return; maplibregl.addProtocol('offline', async (params, abortController) => { const match = params.url.match(/^offline:\/\/tiles\/(\d+)\/(\d+)\/(\d+)/); if (!match) throw new Error('Invalid offline tile URL'); const z = Number(match[1]), x = Number(match[2]), y = Number(match[3]); const electronApi = (window as any).electronAPI; if (electronApi?.getTileServerUrl) { const base = await electronApi.getTileServerUrl(); const response = await fetch(`${base}/tiles/${z}/${x}/${y}.png`, { signal: abortController.signal }); if (response.ok) return { data: await response.arrayBuffer() }; } const data = await getCachedTile(tileKey(z, x, y)); if (abortController.signal.aborted) throw new Error('Request aborted'); if (!data) throw new Error('Tile is not cached'); return { data }; }); protocolRegistered = true; }
