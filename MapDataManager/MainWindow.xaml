@@ -38,8 +38,9 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
                     <TextBox x:Name="SearchBox" Width="310" Height="36" Padding="10,7" Margin="0,0,8,0"
-                             ToolTip="Place name or latitude, longitude" KeyDown="SearchBox_KeyDown"/>
+                             ToolTip="Search city/place or latitude, longitude" KeyDown="SearchBox_KeyDown"/>
                     <Button Content="SEARCH" Width="90" Height="36" Margin="0,0,8,0" Click="Search_Click"/>
+                    <Button Content="DOWNLOAD" Width="105" Height="36" Margin="0,0,8,0" Click="Download_Click"/>
                     <Button x:Name="FolderButton" Content="Select Map Folder" Padding="18,8" Click="SelectFolder_Click"/>
                 </StackPanel>
             </Grid>
@@ -50,10 +51,18 @@
                     <ScrollViewer x:Name="OfflineScrollViewer" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                         <Canvas x:Name="OfflineCanvas" Background="#1E293B"/>
                     </ScrollViewer>
+
+                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="15" Width="48">
+                        <Button Content="+" FontSize="25" FontWeight="Bold" Height="45" Margin="0,0,0,5" Click="ZoomIn_Click" ToolTip="Zoom in"/>
+                        <Button Content="−" FontSize="25" FontWeight="Bold" Height="45" Margin="0,0,0,5" Click="ZoomOut_Click" ToolTip="Zoom out"/>
+                        <Button Content="⌂" FontSize="20" Height="42" Click="ZoomHome_Click" ToolTip="Pakistan / default view"/>
+                    </StackPanel>
+
                     <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="15" Padding="12" Background="#DD0B1220" CornerRadius="6">
                         <StackPanel>
                             <TextBlock Text="GIS STATUS" Foreground="White" FontWeight="Bold"/>
                             <TextBlock x:Name="CoverageText" Text="No offline dataset loaded" Foreground="#CBD5E1" Margin="0,5,0,0"/>
+                            <TextBlock Text="English place labels enabled for offline Pakistan gazetteer" Foreground="#94A3B8" Margin="0,4,0,0" FontSize="11"/>
                         </StackPanel>
                     </Border>
                 </Grid>
