@@ -27,20 +27,32 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <DockPanel Grid.Row="0" Margin="0,0,0,14">
-                <StackPanel DockPanel.Dock="Left">
+            <Grid Grid.Row="0" Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
                     <TextBlock x:Name="PageTitle" Text="Offline Map" Foreground="White" FontSize="25" FontWeight="SemiBold"/>
                     <TextBlock x:Name="StatusText" Text="Native GIS engine ready." Foreground="#94A3B8" Margin="0,5,0,0"/>
                 </StackPanel>
-                <Button DockPanel.Dock="Right" Content="Select Map Folder" Padding="22,10" Click="SelectFolder_Click"/>
-            </DockPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                    <TextBox x:Name="SearchBox" Width="310" Height="36" Padding="10,7" Margin="0,0,8,0"
+                             ToolTip="Place name or latitude, longitude" KeyDown="SearchBox_KeyDown"/>
+                    <Button Content="SEARCH" Width="90" Height="36" Margin="0,0,8,0" Click="Search_Click"/>
+                    <Button x:Name="FolderButton" Content="Select Map Folder" Padding="18,8" Click="SelectFolder_Click"/>
+                </StackPanel>
+            </Grid>
 
             <Border Grid.Row="1" Background="#0F172A" CornerRadius="8" BorderBrush="#334155" BorderThickness="1">
                 <Grid>
-                    <mapsui:MapControl x:Name="MapControl"/>
+                    <mapsui:MapControl x:Name="MapControl" Visibility="Visible"/>
+                    <ScrollViewer x:Name="OfflineScrollViewer" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Canvas x:Name="OfflineCanvas" Background="#1E293B"/>
+                    </ScrollViewer>
                     <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="15" Padding="12" Background="#DD0B1220" CornerRadius="6">
                         <StackPanel>
-                            <TextBlock Text="OFFLINE GIS" Foreground="White" FontWeight="Bold"/>
+                            <TextBlock Text="GIS STATUS" Foreground="White" FontWeight="Bold"/>
                             <TextBlock x:Name="CoverageText" Text="No offline dataset loaded" Foreground="#CBD5E1" Margin="0,5,0,0"/>
                         </StackPanel>
                     </Border>
@@ -51,6 +63,8 @@
                 <StatusBarItem Content="Native WPF GIS"/>
                 <Separator/>
                 <StatusBarItem x:Name="FileStatus" Content="No folder selected"/>
+                <Separator/>
+                <StatusBarItem x:Name="ModeStatus" Content="OFFLINE"/>
             </StatusBar>
         </Grid>
     </Grid>
