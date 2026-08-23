@@ -69,6 +69,7 @@ export async function clearOfflineTiles() {
     tx.onerror = () => reject(tx.error);
   });
   db.close();
+  localStorage.removeItem('rf-offline-bounds');
 }
 
 export function tileKey(z: number, x: number, y: number) { return `${z}/${x}/${y}`; }
@@ -108,7 +109,18 @@ export async function downloadTileRegion(template: string, minLat: number, minLn
       }
     }
   }
+  localStorage.setItem('rf-offline-bounds', JSON.stringify({ minLat, minLng, maxLat, maxLng }));
   return { done, total, savedToFolder, directory: selectedDirectoryName };
+}
+
+function tileToBounds(z: number, x: number, y: number) {
+  const n = 2 ** z;
+  const lon1 = x / n * 360 - 180;
+  const lon2 = (x + 1) / n * 360 - 180;
+  const latFromY = (tileY: number) => 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * tileY / n)));
+  const lat1 = latFromY(y);
+  const lat2 = latFromY(y + 1);
+  return { minLat: Math.min(lat1, lat2), maxLat: Math.max(lat1, lat2), minLng: Math.min(lon1, lon2), maxLng: Math.max(lon1, lon2) };
 }
 
 /** Select one parent folder. The browser returns every file in that folder and all subfolders. */
@@ -119,30 +131,26 @@ export async function importTileFolder(files: FileList | File[], onProgress?: (d
   let done = 0;
   const total = list.length;
   const zooms = new Set<number>();
+  let bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null = null;
+
   for (const file of list) {
     const relativePath = ((file as any).webkitRelativePath || file.name || '').replace(/\\/g, '/');
     const match = relativePath.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
-    if (!match) {
-      skipped++;
-      done++;
-      onProgress?.(done, total);
-      continue;
-    }
+    if (!match) { skipped++; done++; onProgress?.(done, total); continue; }
     const z = Number(match[1]);
     const x = Number(match[2]);
     const y = Number(match[3]);
-    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) {
-      skipped++;
-      done++;
-      onProgress?.(done, total);
-      continue;
-    }
+    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 30 || x < 0 || y < 0) { skipped++; done++; onProgress?.(done, total); continue; }
     await putTile(tileKey(z, x, y), file);
+    const b = tileToBounds(z, x, y);
+    bounds = bounds ? { minLat: Math.min(bounds.minLat, b.minLat), minLng: Math.min(bounds.minLng, b.minLng), maxLat: Math.max(bounds.maxLat, b.maxLat), maxLng: Math.max(bounds.maxLng, b.maxLng) } : b;
     zooms.add(z);
     imported++;
     done++;
     onProgress?.(done, total);
   }
+
+  if (bounds) localStorage.setItem('rf-offline-bounds', JSON.stringify(bounds));
   return { imported, skipped, zooms: Array.from(zooms).sort((a, b) => a - b) };
 }
 
