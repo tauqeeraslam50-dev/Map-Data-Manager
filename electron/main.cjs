@@ -16,6 +16,15 @@ function contentType(filePath) {
   return 'image/png';
 }
 
+function sendHeaders(res, statusCode, headers = {}) {
+  res.writeHead(statusCode, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    ...headers,
+  });
+}
+
 function safeTilePath(root, z, x, y) {
   if (![z, x, y].every(v => /^\d+$/.test(v))) return null;
   const nZ = Number(z), nX = Number(x), nY = Number(y);
@@ -33,19 +42,36 @@ function safeTilePath(root, z, x, y) {
 function startTileServer() {
   server = http.createServer((req, res) => {
     const parsed = url.parse(req.url || '');
+
+    if (req.method === 'OPTIONS') {
+      sendHeaders(res, 204);
+      return res.end();
+    }
+
     if (parsed.pathname === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      sendHeaders(res, 200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true, root: offlineRoot, port: serverPort }));
     }
+
     const match = parsed.pathname.match(/^\/tiles\/(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
     if (!match || !offlineRoot) {
-      res.writeHead(404); return res.end('Tile not found');
+      sendHeaders(res, 404, { 'Content-Type': 'text/plain' });
+      return res.end('Tile not found');
     }
+
     const file = safeTilePath(offlineRoot, match[1], match[2], match[3]);
-    if (!file) { res.writeHead(404); return res.end('Tile not found'); }
-    res.writeHead(200, { 'Content-Type': contentType(file), 'Cache-Control': 'public, max-age=86400' });
+    if (!file) {
+      sendHeaders(res, 404, { 'Content-Type': 'text/plain' });
+      return res.end('Tile not found');
+    }
+
+    sendHeaders(res, 200, {
+      'Content-Type': contentType(file),
+      'Cache-Control': 'public, max-age=86400',
+    });
     fs.createReadStream(file).pipe(res);
   });
+
   server.listen(0, '127.0.0.1', () => {
     serverPort = server.address().port;
     if (mainWindow) mainWindow.webContents.send('tile-server-ready', serverPort);
