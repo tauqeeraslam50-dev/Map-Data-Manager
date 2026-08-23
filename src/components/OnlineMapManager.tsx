@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Download, Globe2, Trash2, MapPinned, FolderOpen, Upload } from 'lucide-react';
+import { Download, Globe2, Trash2, MapPinned, FolderOpen } from 'lucide-react';
 import { DEFAULT_TILE_URL, clearOfflineTiles, downloadTileRegion, estimateDownload, registerOfflineProtocol, chooseDownloadDirectory, getSelectedDirectoryName, importTileFolder } from '../lib/onlineMap';
 import { MapContainer, TileLayer, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -41,36 +41,36 @@ export default function OnlineMapManager() {
   };
 
   const download = async () => {
-    if (!folderName) { setMessage('First click Select Download Folder and choose where the map files should be stored.'); return; }
+    if (!folderName) { setMessage('First select a download folder.'); return; }
     if (!template.includes('{z}') || !template.includes('{x}') || !template.includes('{y}')) { setMessage('Tile URL must contain {z}, {x} and {y}.'); return; }
     if (minZoom > maxZoom) { setMessage('Minimum zoom cannot be greater than maximum zoom.'); return; }
-    if (estimated > 10000) { setMessage(`This area/zoom selection contains ${estimated.toLocaleString()} tiles. Reduce the area or maximum zoom to 10,000 tiles or fewer.`); return; }
+    if (estimated > 10000) { setMessage(`This selection contains ${estimated.toLocaleString()} tiles. Reduce the area or maximum zoom to 10,000 tiles or fewer.`); return; }
     registerOfflineProtocol(); setDownloading(true); setProgress(0); setMessage(`Downloading tiles to ${folderName}...`);
     try {
       const result = await downloadTileRegion(template, minLat, minLng, maxLat, maxLng, minZoom, maxZoom, (done, total) => setProgress(Math.round((done / total) * 100)));
       localStorage.setItem('rf-map-mode', 'offline'); window.dispatchEvent(new CustomEvent('rf-map-mode-changed', { detail: 'offline' }));
-      setMessage(`Download complete. ${result.savedToFolder.toLocaleString()} map files saved in ${result.directory}. Folder structure: zoom/x/y.png. Field Map is now OFFLINE.`);
+      setMessage(`Download complete. ${result.savedToFolder.toLocaleString()} map files saved in ${result.directory}. Field Map is now OFFLINE.`);
     } catch (error) { setMessage(`Download failed: ${error instanceof Error ? error.message : String(error)}`); }
     finally { setDownloading(false); }
   };
 
-  const importFolder = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const scanSelectedFolder = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files?.length) return;
     setImporting(true);
-    setMessage(`Reading ${files.length.toLocaleString()} files from the selected tile folder...`);
+    setMessage(`Scanning the selected folder and all subfolders: ${files.length.toLocaleString()} files found...`);
     try {
       registerOfflineProtocol();
-      const result = await importTileFolder(files);
+      const result = await importTileFolder(files, (done, total) => setProgress(Math.round((done / total) * 100)));
       if (!result.imported) {
-        setMessage('No XYZ tiles found. Select the parent folder containing folders such as 5/123/456.png.');
+        setMessage(`Folder scanned (${files.length.toLocaleString()} files), but no XYZ map tiles were found. Expected folders like z/x/y.png, z/x/y.jpg or z/x/y.webp.`);
         return;
       }
       localStorage.setItem('rf-map-mode', 'offline');
       window.dispatchEvent(new CustomEvent('rf-map-mode-changed', { detail: 'offline' }));
-      setMessage(`Imported ${result.imported.toLocaleString()} map tiles. Zoom levels: ${result.zooms.join(', ')}. Field Map is now OFFLINE.`);
-    } catch (error) { setMessage(`Import failed: ${error instanceof Error ? error.message : String(error)}`); }
-    finally { setImporting(false); event.target.value = ''; }
+      setMessage(`Folder scan complete. Imported ${result.imported.toLocaleString()} map tiles from ${files.length.toLocaleString()} files. Zoom levels: ${result.zooms.join(', ')}. Field Map is now OFFLINE.`);
+    } catch (error) { setMessage(`Folder scan failed: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { setImporting(false); setProgress(0); event.target.value = ''; }
   };
 
   const clear = async () => { await clearOfflineTiles(); localStorage.setItem('rf-map-mode', 'online'); window.dispatchEvent(new CustomEvent('rf-map-mode-changed', { detail: 'online' })); setMessage('Offline cache cleared.'); };
@@ -78,7 +78,7 @@ export default function OnlineMapManager() {
   return (
     <div className="w-full h-full bg-white rounded-xl overflow-y-auto shadow-inner border-4 border-white p-6 md:p-8 space-y-6 flex flex-col">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
-        <div><h2 className="text-xl font-bold text-slate-800 flex items-center"><Globe2 className="w-6 h-6 mr-3 text-blue-600" />Online Map Downloader</h2><p className="text-sm text-slate-500 mt-1">Download XYZ map tiles to a dedicated folder or import an existing tile folder.</p></div>
+        <div><h2 className="text-xl font-bold text-slate-800 flex items-center"><Globe2 className="w-6 h-6 mr-3 text-blue-600" />Online Map Downloader</h2><p className="text-sm text-slate-500 mt-1">Download map tiles to a dedicated folder, or select an existing folder and let the software scan it automatically.</p></div>
         <MapPinned className="w-8 h-8 text-slate-300" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-[400px]">
@@ -90,8 +90,13 @@ export default function OnlineMapManager() {
             </MapContainer>
             <div className="absolute bottom-4 left-4 right-4 z-[400] pointer-events-none flex justify-center"><div className="bg-white/95 backdrop-blur shadow-lg rounded-lg border border-slate-200 p-4 pointer-events-auto w-full max-w-xl">
               <div className="flex justify-between items-center mb-3"><span className="text-xs font-bold text-slate-700">Estimated Tiles</span><span className={`font-mono text-sm font-bold ${estimated > 10000 ? 'text-red-600' : 'text-blue-600'}`}>{estimated.toLocaleString()}</span></div>
-              <div className="flex flex-wrap gap-2"><button onClick={selectFolder} disabled={downloading || importing} className="flex-1 min-w-[170px] bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded flex items-center justify-center font-medium text-sm"><FolderOpen className="w-4 h-4 mr-2" />Select Download Folder</button><button disabled={downloading || importing} onClick={download} className="flex-1 min-w-[150px] bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-2 rounded flex items-center justify-center font-medium text-sm"><Download className="w-4 h-4 mr-2" />{downloading ? `Downloading ${progress}%` : 'Download View'}</button><button disabled={downloading || importing} onClick={() => folderInputRef.current?.click()} className="flex-1 min-w-[170px] bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-2 rounded flex items-center justify-center font-medium text-sm"><Upload className="w-4 h-4 mr-2" />{importing ? 'Importing...' : 'Import Tile Folder'}</button><button disabled={downloading || importing} onClick={clear} title="Clear Offline Cache" className="px-3 py-2 rounded border border-red-200 text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button></div>
-              <input ref={folderInputRef} type="file" multiple {...({ webkitdirectory: '', directory: '' } as any)} onChange={importFolder} className="hidden" />
+              <div className="flex flex-wrap gap-2">
+                <button onClick={selectFolder} disabled={downloading || importing} className="flex-1 min-w-[170px] bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded flex items-center justify-center font-medium text-sm"><FolderOpen className="w-4 h-4 mr-2" />Select Download Folder</button>
+                <button disabled={downloading || importing} onClick={download} className="flex-1 min-w-[150px] bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-2 rounded flex items-center justify-center font-medium text-sm"><Download className="w-4 h-4 mr-2" />{downloading ? `Downloading ${progress}%` : 'Download View'}</button>
+                <button disabled={downloading || importing} onClick={() => folderInputRef.current?.click()} className="flex-1 min-w-[200px] bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-2 rounded flex items-center justify-center font-medium text-sm"><FolderOpen className="w-4 h-4 mr-2" />{importing ? `Scanning ${progress}%` : 'Select Folder & Scan Offline Maps'}</button>
+                <button disabled={downloading || importing} onClick={clear} title="Clear Offline Cache" className="px-3 py-2 rounded border border-red-200 text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+              </div>
+              <input ref={folderInputRef} type="file" multiple {...({ webkitdirectory: '', directory: '' } as any)} onChange={scanSelectedFolder} className="hidden" />
             </div></div>
           </div>
         </div>
@@ -100,13 +105,15 @@ export default function OnlineMapManager() {
             <div><label className="text-xs font-semibold text-slate-500">XYZ Tile URL</label><input value={template} onChange={e => setTemplate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded border border-slate-300 bg-white font-mono text-xs" /></div>
             <div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-500">Min Zoom<input type="number" min="0" max="19" value={minZoom} onChange={e => setMinZoom(Number(e.target.value))} className="mt-1 w-full px-2 py-2 rounded border border-slate-300 bg-white" /></label><label className="text-xs font-semibold text-slate-500">Max Zoom<input type="number" min="0" max="19" value={maxZoom} onChange={e => setMaxZoom(Number(e.target.value))} className="mt-1 w-full px-2 py-2 rounded border border-slate-300 bg-white" /></label></div>
           </div>
-          <div className="border rounded-lg p-5 bg-slate-50 shadow-sm"><h3 className="font-semibold text-slate-700 text-sm mb-3">Map Tile Storage</h3><div className="p-3 rounded bg-white border border-slate-200 text-xs font-mono break-all">{folderName || 'No download folder selected'}</div><button onClick={selectFolder} disabled={downloading || importing} className="mt-3 w-full border border-slate-300 bg-white hover:bg-slate-50 px-3 py-2 rounded text-sm font-medium flex items-center justify-center"><FolderOpen className="w-4 h-4 mr-2" />Choose / Change Download Folder</button><button onClick={() => folderInputRef.current?.click()} disabled={downloading || importing} className="mt-2 w-full border border-green-300 bg-green-50 hover:bg-green-100 text-green-700 px-3 py-2 rounded text-sm font-medium flex items-center justify-center"><Upload className="w-4 h-4 mr-2" />Import Existing PNG Tile Folder</button><p className="text-[10px] text-slate-500 mt-2">Import a folder containing the XYZ structure <b>zoom/x/y.png</b>. PNG, JPG, JPEG and WEBP tiles are supported.</p></div>
+          <div className="border rounded-lg p-5 bg-slate-50 shadow-sm"><h3 className="font-semibold text-slate-700 text-sm mb-3">Offline Map Import</h3><button onClick={() => folderInputRef.current?.click()} disabled={downloading || importing} className="w-full border border-green-300 bg-green-50 hover:bg-green-100 text-green-700 px-3 py-3 rounded text-sm font-semibold flex items-center justify-center"><FolderOpen className="w-4 h-4 mr-2" />{importing ? `Scanning ${progress}%` : 'Select Folder & Scan All Map Files'}</button><p className="text-[10px] text-slate-500 mt-2">Select only the parent map folder. The software recursively scans all files and imports supported XYZ tiles automatically. No individual file selection is required.</p></div>
+          <div className="border rounded-lg p-5 bg-slate-50 shadow-sm"><h3 className="font-semibold text-slate-700 text-sm mb-3">Map Tile Storage</h3><div className="p-3 rounded bg-white border border-slate-200 text-xs font-mono break-all">{folderName || 'No download folder selected'}</div><button onClick={selectFolder} disabled={downloading || importing} className="mt-3 w-full border border-slate-300 bg-white hover:bg-slate-50 px-3 py-2 rounded text-sm font-medium flex items-center justify-center"><FolderOpen className="w-4 h-4 mr-2" />Choose / Change Download Folder</button></div>
           <div className="border rounded-lg p-5 bg-slate-50 shadow-sm"><h3 className="font-semibold text-slate-700 text-sm mb-3">Selected Region</h3><div className="grid grid-cols-2 gap-3 text-xs font-mono"><div>North: {maxLat}</div><div>South: {minLat}</div><div>West: {minLng}</div><div>East: {maxLng}</div></div></div>
           {downloading && <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden"><div className="bg-blue-600 h-full transition-all" style={{ width: `${progress}%` }} /></div>}
+          {importing && <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden"><div className="bg-green-600 h-full transition-all" style={{ width: `${progress}%` }} /></div>}
           {message && <div className="p-3 rounded bg-blue-50 border border-blue-200 text-xs text-blue-800 leading-tight">{message}</div>}
         </div>
       </div>
-      <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed shrink-0"><strong>Offline workflow:</strong> Downloaded tiles are saved as normal files in your selected folder. You can later use <b>Import Tile Folder</b> to load that folder into the application's offline map cache. No manual PNG-to-PMTiles conversion is required.</div>
+      <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed shrink-0"><strong>Offline workflow:</strong> Select one parent map folder. The application scans all files and subfolders, identifies XYZ map tiles such as <b>zoom/x/y.png</b>, imports them into the offline cache, and switches the Field Map to OFFLINE automatically.</div>
     </div>
   );
 }
