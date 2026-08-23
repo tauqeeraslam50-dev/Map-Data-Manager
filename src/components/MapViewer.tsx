@@ -21,6 +21,18 @@ export default function MapViewer() {
 
   useEffect(() => { getTowers().then(setTowers); }, []);
 
+  const fitOfflineBounds = useCallback(() => {
+    if (!map.current) return;
+    try {
+      const raw = localStorage.getItem('rf-offline-bounds');
+      if (!raw) return;
+      const b = JSON.parse(raw);
+      if ([b.minLat, b.minLng, b.maxLat, b.maxLng].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))) {
+        map.current.fitBounds([[b.minLng, b.minLat], [b.maxLng, b.maxLat]], { padding: 50, duration: 700, maxZoom: 16 });
+      }
+    } catch (error) { console.warn('Could not fit offline map bounds:', error); }
+  }, []);
+
   const setBaseMap = useCallback((mode: 'online' | 'offline') => {
     if (!map.current || !map.current.isStyleLoaded()) return;
     registerOfflineProtocol();
@@ -31,7 +43,8 @@ export default function MapViewer() {
     map.current.addSource(sourceId, { type: 'raster', tiles: [mode === 'offline' ? 'offline://tiles/{z}/{x}/{y}' : DEFAULT_TILE_URL], tileSize: 256, minzoom: 0, maxzoom: 19 });
     map.current.addLayer({ id: layerId, type: 'raster', source: sourceId, paint: { 'raster-opacity': 1 } }, 'los-line-layer');
     setMapMode(mode);
-  }, []);
+    if (mode === 'offline') requestAnimationFrame(() => fitOfflineBounds());
+  }, [fitOfflineBounds]);
 
   const updatePmtilesLayer = useCallback(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
@@ -135,14 +148,14 @@ export default function MapViewer() {
   return (
     <div className="w-full h-full bg-slate-300 rounded-xl overflow-hidden shadow-inner flex flex-col relative border-4 border-white">
       <div className="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur shadow-md rounded-md px-4 py-2 border border-slate-200 flex items-center gap-3">
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Field Map</h2>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Offline Map View</h2>
         <button onClick={() => changeMode('online')} className={`text-[10px] px-2 py-1 rounded font-bold ${mapMode === 'online' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>ONLINE</button>
         <button onClick={() => changeMode('offline')} className={`text-[10px] px-2 py-1 rounded font-bold ${mapMode === 'offline' ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600'}`}>OFFLINE</button>
-        <span className="text-[10px] text-slate-500">{selectedTowers.length === 0 ? 'Select a tower' : selectedTowers.length === 1 ? 'Select second tower' : 'LoS ready'}</span>
+        <span className="text-[10px] text-slate-500">{mapMode === 'offline' ? 'Imported map data' : 'Online preview'}</span>
       </div>
       <div className="relative flex-1">
         <div ref={mapContainer} style={{ height: '100%', width: '100%', minHeight: '400px', zIndex: 1 }} />
-        {!hasMapLayer && <div className="absolute top-20 right-4 z-[1000] bg-white/90 backdrop-blur rounded-md border border-slate-200 shadow px-3 py-2 text-xs text-slate-600">Base map: {mapMode === 'online' ? 'Online XYZ' : 'Offline cache'} • No PMTiles overlay enabled</div>}
+        {!hasMapLayer && <div className="absolute top-20 right-4 z-[1000] bg-white/90 backdrop-blur rounded-md border border-slate-200 shadow px-3 py-2 text-xs text-slate-600">Base map: {mapMode === 'online' ? 'Online XYZ' : 'Offline tile cache'} • PMTiles overlay optional</div>}
         {mapError && <div className="absolute top-20 left-4 right-4 z-[1001] bg-red-50/95 backdrop-blur rounded-md border border-red-200 shadow px-3 py-2 text-xs text-red-700"><strong>Map error:</strong> {mapError}</div>}
         {losResult && selectedTowers.length === 2 && <div className="absolute bottom-6 left-6 z-[1000] bg-white/95 backdrop-blur rounded-lg border border-slate-300 shadow-2xl p-4 w-[360px]"><h3 className="text-xs font-bold text-slate-500 uppercase mb-3 border-b border-slate-200 pb-2">Link Profile: {selectedTowers[0].name} ↔ {selectedTowers[1].name}</h3><div className="bg-blue-50 border border-blue-100 p-2 rounded w-full mb-4"><p className="text-[10px] text-blue-600 font-bold uppercase">Air Distance</p><p className="text-lg font-mono font-bold text-blue-900">{losResult.distance.toFixed(2)} km</p></div><div className="space-y-2 text-xs font-mono text-slate-600"><div className="flex justify-between border-b border-slate-100 pb-1"><span>Max Radio Horizon</span><span className="font-bold text-slate-900">{losResult.maxDistance.toFixed(2)} km</span></div><div className="flex justify-between border-b border-slate-100 pb-1"><span>Earth Bulge (Mid)</span><span className="font-bold text-slate-900">{losResult.earthBulgeMeters.toFixed(2)} m</span></div><div className="flex justify-between border-b border-slate-100 pb-1"><span>60% Fresnel Radius</span><span className="font-bold text-slate-900">{losResult.requiredClearance.toFixed(2)} m</span></div><div className="flex justify-between items-center mt-3 pt-2"><span className="font-bold font-sans text-slate-700">LoS Status:</span><span className={`px-2 py-1 rounded font-bold text-[10px] ${losResult.isClearLoS ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{losResult.isClearLoS ? 'CLEAR (60% FRESNEL)' : 'OBSTRUCTED'}</span></div></div></div>}
       </div>
