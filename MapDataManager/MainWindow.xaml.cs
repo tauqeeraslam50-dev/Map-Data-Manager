@@ -6,7 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
-using Microsoft.Win32;
+using Forms = System.Windows.Forms;
 using Mapsui;
 using Mapsui.Tiling;
 
@@ -35,16 +35,17 @@ public partial class MainWindow : Window
 
     private async void SelectFolder_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog
+        using var dialog = new Forms.FolderBrowserDialog
         {
-            Title = "Select the folder containing offline XYZ/TMS map tiles",
-            Multiselect = false
+            Description = "Select the folder containing offline XYZ/TMS map tiles",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false
         };
 
-        if (dialog.ShowDialog() != true)
+        if (dialog.ShowDialog() != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
             return;
 
-        _offlineFolder = dialog.FolderName;
+        _offlineFolder = dialog.SelectedPath;
         await LoadOfflineTilesAsync(_offlineFolder);
     }
 
@@ -53,8 +54,10 @@ public partial class MainWindow : Window
         try
         {
             StatusText.Text = "Scanning offline map tiles...";
+            CoverageText.Text = "Scanning...";
             _offlineTiles.Clear();
             OfflineCanvas.Children.Clear();
+            _offlineTms = IsTmsFolder(folder);
 
             foreach (var path in Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories))
             {
@@ -65,8 +68,10 @@ public partial class MainWindow : Window
 
             if (_offlineTiles.Count == 0)
             {
-                CoverageText.Text = "No XYZ/TMS raster tiles detected.";
-                StatusText.Text = "No supported tile structure was found.";
+                OfflineScrollViewer.Visibility = Visibility.Visible;
+                MapControl.Visibility = Visibility.Collapsed;
+                CoverageText.Text = "No XYZ/TMS PNG/JPEG tiles detected.";
+                StatusText.Text = "Select a folder with tiles arranged as Z\\X\\Y.png (XYZ).";
                 return;
             }
 
@@ -78,32 +83,39 @@ public partial class MainWindow : Window
             var maxY = selected.Max(t => t.Y);
 
             const double tileSize = 256;
-            OfflineCanvas.Width = (maxX - minX + 1) * tileSize;
-            OfflineCanvas.Height = (maxY - minY + 1) * tileSize;
+            OfflineCanvas.Width = Math.Max(tileSize, (maxX - minX + 1) * tileSize);
+            OfflineCanvas.Height = Math.Max(tileSize, (maxY - minY + 1) * tileSize);
 
+            var rendered = 0;
             foreach (var tile in selected)
             {
+                var source = LoadBitmap(tile.Path);
+                if (source == null) continue;
+
                 var image = new Image
                 {
                     Width = tileSize,
                     Height = tileSize,
                     Stretch = System.Windows.Media.Stretch.Fill,
-                    Source = LoadBitmap(tile.Path)
+                    Source = source,
+                    SnapsToDevicePixels = true
                 };
 
-                if (image.Source == null) continue;
                 Canvas.SetLeft(image, (tile.X - minX) * tileSize);
                 Canvas.SetTop(image, (tile.Y - minY) * tileSize);
                 OfflineCanvas.Children.Add(image);
+                rendered++;
             }
 
             OfflineScrollViewer.Visibility = Visibility.Visible;
             MapControl.Visibility = Visibility.Collapsed;
             ModeStatus.Content = "OFFLINE";
-            var tileScheme = _offlineTms ? "TMS" : "XYZ";
-            CoverageText.Text = $"{_offlineTiles.Count:N0} raster tiles • Zoom {_offlineZoom} • {tileScheme}";
+            var scheme = _offlineTms ? "TMS" : "XYZ";
+            CoverageText.Text = $"{_offlineTiles.Count:N0} tiles detected • Zoom {_offlineZoom} • {scheme} • {rendered:N0} rendered";
             FileStatus.Content = folder;
-            StatusText.Text = $"Offline map rendered from {_offlineTiles.Count:N0} detected tiles at zoom {_offlineZoom}.";
+            StatusText.Text = rendered == 0
+                ? "Tiles were detected but none could be decoded. Use PNG or JPEG tiles."
+                : $"Offline map loaded successfully from zoom {_offlineZoom}.";
 
             await Task.Yield();
             OfflineScrollViewer.ScrollToHorizontalOffset(Math.Max(0, OfflineCanvas.Width / 2 - OfflineScrollViewer.ViewportWidth / 2));
@@ -111,6 +123,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            CoverageText.Text = "Offline map load failed.";
             StatusText.Text = $"Offline map error: {ex.Message}";
         }
     }
@@ -138,13 +151,14 @@ public partial class MainWindow : Window
             else
             {
                 ShowOnlineCoordinates(lat, lon);
+                StatusText.Text = $"Online coordinates: {lat:F6}, {lon:F6}";
             }
             return;
         }
 
         if (ModeStatus.Content?.ToString() == "OFFLINE")
         {
-            StatusText.Text = "Offline search accepts coordinates because no internet geocoder is used in offline mode.";
+            StatusText.Text = "Offline search accepts coordinates only. Example: 33.6844, 73.0479";
             return;
         }
 
@@ -188,11 +202,12 @@ public partial class MainWindow : Window
 
         var n = Math.Pow(2, _offlineZoom);
         var x = (lon + 180.0) / 360.0 * n;
-        var latRad = lat * Math.PI / 180.0;
+        var latRad = Math.Clamp(lat, -85.05112878, 85.05112878) * Math.PI / 180.0;
         var y = (1.0 - Math.Log(Math.Tan(latRad) + 1.0 / Math.Cos(latRad)) / Math.PI) / 2.0 * n;
         if (_offlineTms) y = n - 1 - y;
 
         var tiles = _offlineTiles.Where(t => t.Z == _offlineZoom).ToList();
+        if (tiles.Count == 0) return;
         var minX = tiles.Min(t => t.X);
         var minY = tiles.Min(t => t.Y);
         OfflineScrollViewer.ScrollToHorizontalOffset(Math.Max(0, (x - minX) * 256 - OfflineScrollViewer.ViewportWidth / 2));
@@ -212,10 +227,11 @@ public partial class MainWindow : Window
     {
         try
         {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(path, UriKind.Absolute);
+            bitmap.StreamSource = stream;
             bitmap.EndInit();
             bitmap.Freeze();
             return bitmap;
@@ -244,14 +260,15 @@ public partial class MainWindow : Window
         if (parts.Length < 3) return false;
 
         var fileName = Path.GetFileNameWithoutExtension(parts[^1]);
-        if (!int.TryParse(parts[^3], out var z)) return false;
-        if (!int.TryParse(parts[^2], out var second)) return false;
-        if (!int.TryParse(fileName, out var third)) return false;
+        if (!int.TryParse(parts[^3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var z)) return false;
+        if (!int.TryParse(parts[^2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var x)) return false;
+        if (!int.TryParse(fileName, NumberStyles.Integer, CultureInfo.InvariantCulture, out var y)) return false;
         if (z < 0 || z > 24) return false;
 
-        var tms = root.Contains("tms", StringComparison.OrdinalIgnoreCase);
-        _ = tms;
-        tile = new OfflineTile(path, z, second, third);
+        var max = (1L << z) - 1;
+        if (x < 0 || y < 0 || x > max || y > max) return false;
+
+        tile = new OfflineTile(path, z, x, y);
         return true;
     }
 
@@ -260,8 +277,13 @@ public partial class MainWindow : Window
         var extension = Path.GetExtension(path);
         return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTmsFolder(string folder)
+    {
+        var name = new DirectoryInfo(folder).Name;
+        return name.Contains("tms", StringComparison.OrdinalIgnoreCase);
     }
 
     private void OfflineMap_Click(object sender, RoutedEventArgs e)
