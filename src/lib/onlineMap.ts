@@ -73,18 +73,22 @@ export async function downloadTileRegion(template: string, minLat: number, minLn
 
 export function registerOfflineProtocol() {
   if (protocolRegistered) return;
-  maplibregl.addProtocol('offline', (params: any, callback: any) => {
-    let cancelled = false;
+  maplibregl.addProtocol('offline', async (params, abortController) => {
     const match = params.url.match(/^offline:\/\/tiles\/(\d+)\/(\d+)\/(\d+)/);
-    if (!match) { callback(new Error('Invalid offline tile URL'), null, null, null); return { cancel: () => { cancelled = true; } }; }
-    void getCachedTile(tileKey(Number(match[1]), Number(match[2]), Number(match[3])))
-      .then(data => {
-        if (cancelled) return;
-        if (!data) callback(new Error('Tile is not cached'), null, null, null);
-        else callback(null, data, null, null);
-      })
-      .catch(error => { if (!cancelled) callback(error, null, null, null); });
-    return { cancel: () => { cancelled = true; } };
+    if (!match) {
+      throw new Error('Invalid offline tile URL');
+    }
+    
+    const data = await getCachedTile(tileKey(Number(match[1]), Number(match[2]), Number(match[3])));
+    if (abortController.signal.aborted) {
+      throw new Error('Request aborted');
+    }
+    
+    if (!data) {
+      throw new Error('Tile is not cached');
+    }
+    
+    return { data };
   });
   protocolRegistered = true;
 }

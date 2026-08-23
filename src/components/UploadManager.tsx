@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Upload, Trash2, Database, Map as MapIcon, RadioTower, CheckCircle2, Circle, FolderOpen } from 'lucide-react';
+import { Upload, Trash2, Database, Map as MapIcon, RadioTower, CheckCircle2, Circle, FolderOpen, Download } from 'lucide-react';
 import { saveTower, saveTowers, clearTowers, getTowers, Tower } from '../lib/db';
 import { MapPackage } from '../lib/db';
 
@@ -164,6 +164,27 @@ export default function UploadManager() {
     import('../lib/mapState').then(module => module.togglePackage(id, enabled));
   };
 
+  const downloadPackage = async (pkg: MapPackage) => {
+    if (!pkg.file) {
+      showMessage('File data not available for this package.', 'error');
+      return;
+    }
+    try {
+      const url = URL.createObjectURL(pkg.file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = pkg.name || 'map-backup.pmtiles';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showMessage(`Started download for ${pkg.name}. You can reload this via "Select Backup Folder" later.`, 'success');
+    } catch (err) {
+      console.error('Failed to download package:', err);
+      showMessage('Failed to create backup download.', 'error');
+    }
+  };
+
   const removePackage = async (id: string) => {
     setBusy(true);
     try {
@@ -196,13 +217,13 @@ export default function UploadManager() {
       <div className="border rounded-lg p-5 bg-slate-50">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h3 className="font-medium text-slate-700">Map Data Folder</h3>
-            <p className="text-sm text-slate-500 mt-1">Select a local folder containing PMTiles, HGT, GeoTIFF and other offline map data.</p>
+            <h3 className="font-medium text-slate-700">Restore Map Data & Backup Folder</h3>
+            <p className="text-sm text-slate-500 mt-1">Select a local folder containing your backup PMTiles or other offline map data to reload them into the map engine.</p>
             <p className="text-xs text-blue-600 mt-2 font-mono truncate">{selectedFolder}</p>
           </div>
           <div className="relative shrink-0">
             <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors cursor-pointer">
-              <FolderOpen className="w-4 h-4 mr-2" />Select Map Folder
+              <FolderOpen className="w-4 h-4 mr-2" />Select Backup Folder
               <input ref={folderInputRef} type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" multiple {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={handleFolderSelect} />
             </label>
           </div>
@@ -213,7 +234,7 @@ export default function UploadManager() {
         <div className="border rounded-lg p-5 bg-slate-50 md:col-span-2">
           <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><MapIcon className="w-5 h-5 text-slate-600" /><h3 className="font-medium text-slate-700">Offline Maps (PMTiles)</h3></div><span className="text-sm font-semibold px-2 py-1 rounded bg-blue-100 text-blue-700">{packages.length} Installed</span></div>
           <p className="text-sm text-slate-500 mb-4">Manage local .pmtiles map archives for offline map rendering.</p>
-          <div className="space-y-3 mb-6">{packages.length === 0 ? <div className="text-center py-6 bg-white border border-dashed border-slate-300 rounded-lg text-slate-400 text-sm">No map packages installed.</div> : packages.map(pkg => <div key={pkg.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg shadow-sm"><div className="flex items-center space-x-3 flex-1 min-w-0"><button type="button" onClick={() => togglePackage(pkg.id, !pkg.enabled)} className="text-blue-600 focus:outline-none flex-shrink-0">{pkg.enabled ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5 text-slate-300" />}</button><div className="flex flex-col truncate"><span className="font-semibold text-slate-800 text-sm truncate">{pkg.name}</span><span className="text-xs text-slate-500">{(pkg.size / (1024 * 1024)).toFixed(2)} MB • {pkg.tileType === 1 ? 'Vector (MVT)' : 'Raster'} • Zoom {pkg.minZoom}-{pkg.maxZoom}</span></div></div><button type="button" onClick={() => removePackage(pkg.id)} className="ml-4 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0" title="Remove package"><Trash2 className="w-4 h-4" /></button></div>)}</div>
+          <div className="space-y-3 mb-6">{packages.length === 0 ? <div className="text-center py-6 bg-white border border-dashed border-slate-300 rounded-lg text-slate-400 text-sm">No map packages installed.</div> : packages.map(pkg => <div key={pkg.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg shadow-sm"><div className="flex items-center space-x-3 flex-1 min-w-0"><button type="button" onClick={() => togglePackage(pkg.id, !pkg.enabled)} className="text-blue-600 focus:outline-none flex-shrink-0">{pkg.enabled ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5 text-slate-300" />}</button><div className="flex flex-col truncate"><span className="font-semibold text-slate-800 text-sm truncate">{pkg.name}</span><span className="text-xs text-slate-500">{(pkg.size / (1024 * 1024)).toFixed(2)} MB • {pkg.tileType === 1 ? 'Vector (MVT)' : 'Raster'} • Zoom {pkg.minZoom}-{pkg.maxZoom}</span></div></div><div className="flex items-center ml-4 space-x-2"><button type="button" onClick={() => downloadPackage(pkg)} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors flex-shrink-0" title="Download backup of this map"><Download className="w-4 h-4" /></button><button type="button" onClick={() => removePackage(pkg.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0" title="Remove package"><Trash2 className="w-4 h-4" /></button></div></div>)}</div>
           <div className="relative">
             <button type="button" disabled={busy} onClick={() => openPicker(packageInputRef)} className="w-full cursor-pointer disabled:opacity-60 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center transition-colors"><Upload className="w-4 h-4 mr-2" />{busy ? 'Reading PMTiles…' : 'Install PMTiles Package'}</button>
             <input ref={packageInputRef} type="file" accept=".pmtiles,application/octet-stream" className="sr-only" onChange={handlePackageUpload} />
