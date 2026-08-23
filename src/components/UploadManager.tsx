@@ -1,17 +1,61 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, Database, Map as MapIcon, RadioTower, CheckCircle2, Circle, FolderOpen } from 'lucide-react';
-import { saveTower, clearTowers, getTowers, Tower } from '../lib/db';
+import { saveTower, saveTowers, clearTowers, getTowers, Tower } from '../lib/db';
 import { MapPackage } from '../lib/db';
+
+const parseCSV = async (file: File): Promise<number> => {
+  const text = await file.text();
+  const lines = text.split('\n');
+  const towersToSave: Tower[] = [];
+  let imported = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parts = line.split(',');
+    if (parts.length >= 5) {
+      const tower: Tower = { 
+        id: parts[0]?.trim() || `T-${Date.now()}-${i}`, 
+        name: parts[1]?.trim(), 
+        lat: parseFloat(parts[2]?.trim()), 
+        lng: parseFloat(parts[3]?.trim()), 
+        height: parseFloat(parts[4]?.trim()) 
+      };
+      if (!isNaN(tower.lat) && !isNaN(tower.lng) && !isNaN(tower.height)) {
+        towersToSave.push(tower);
+        imported++;
+      }
+    }
+    
+    // Batch DB insertions in chunks to avoid blocking and improve performance
+    if (towersToSave.length >= 2500) {
+      await saveTowers(towersToSave);
+      towersToSave.length = 0;
+    }
+  }
+
+  if (towersToSave.length > 0) {
+    await saveTowers(towersToSave);
+  }
+  
+  return imported;
+};
 
 export default function UploadManager() {
   const [towerCount, setTowerCount] = useState(0);
   const [packages, setPackages] = useState<MapPackage[]>([]);
   const [selectedFolder, setSelectedFolder] = useState('No folder selected');
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{text: string, type: 'success'|'error'|'info'} | null>(null);
   const packageInputRef = useRef<HTMLInputElement>(null);
   const towerInputRef = useRef<HTMLInputElement>(null);
   const terrainInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const showMessage = (text: string, type: 'success'|'error'|'info' = 'info') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), 5000);
+  };
 
   useEffect(() => {
     updateStats();
@@ -43,26 +87,18 @@ export default function UploadManager() {
   const handleTowerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setBusy(true);
     try {
-      const text = await file.text();
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      let imported = 0;
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',').map(p => p.trim());
-        if (parts.length >= 5) {
-          const tower: Tower = { id: parts[0] || `T-${i}`, name: parts[1], lat: parseFloat(parts[2]), lng: parseFloat(parts[3]), height: parseFloat(parts[4]) };
-          if (!isNaN(tower.lat) && !isNaN(tower.lng) && !isNaN(tower.height)) {
-            await saveTower(tower);
-            imported++;
-          }
-        }
-      }
-      alert(`Imported ${imported} towers successfully.`);
+      const imported = await parseCSV(file);
+      showMessage(`Imported ${imported} towers successfully.`, 'success');
       await updateStats();
     } catch (err) {
       console.error('Failed to parse towers:', err);
-      alert('Error parsing CSV file.');
-    } finally { e.target.value = ''; }
+      showMessage('Error parsing CSV file.', 'error');
+    } finally { 
+      setBusy(false);
+      e.target.value = ''; 
+    }
   };
 
   const handlePackageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,17 +108,18 @@ export default function UploadManager() {
     try {
       const module = await import('../lib/mapState');
       const success = await module.addMapPackage(file);
-      if (!success) alert('Failed to validate PMTiles package.');
+      if (!success) showMessage('Failed to validate PMTiles package.', 'error');
+      else showMessage('Installed PMTiles package successfully.', 'success');
     } catch (err) {
       console.error('Failed to install PMTiles package:', err);
-      alert(`Failed to install PMTiles package: ${err instanceof Error ? err.message : String(err)}`);
+      showMessage(`Failed to install PMTiles package: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally { setBusy(false); e.target.value = ''; }
   };
 
   const handleTerrainUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    alert(`Terrain file selected: ${file.name}\nTerrain parsing will be enabled in the DEM phase.`);
+    showMessage(`Terrain file selected: ${file.name}\nTerrain parsing will be enabled in the DEM phase.`, 'info');
     e.target.value = '';
   };
 
@@ -106,28 +143,18 @@ export default function UploadManager() {
         }
         
         for (const file of csvFiles) {
-          const text = await file.text();
-          const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-          for (let i = 1; i < lines.length; i++) {
-            const parts = lines[i].split(',').map(p => p.trim());
-            if (parts.length >= 5) {
-              const tower: Tower = { id: parts[0] || `T-${i}`, name: parts[1], lat: parseFloat(parts[2]), lng: parseFloat(parts[3]), height: parseFloat(parts[4]) };
-              if (!isNaN(tower.lat) && !isNaN(tower.lng) && !isNaN(tower.height)) {
-                await saveTower(tower);
-              }
-            }
-          }
+          await parseCSV(file);
         }
         await updateStats();
-        alert(`Successfully imported ${pmtilesFiles.length} map package(s) and parsed ${csvFiles.length} tower file(s) from ${folder}.`);
+        showMessage(`Successfully imported ${pmtilesFiles.length} map package(s) and parsed ${csvFiles.length} tower file(s) from ${folder}.`, 'success');
       } catch (err) {
         console.error('Failed to process folder:', err);
-        alert('An error occurred while processing the folder.');
+        showMessage('An error occurred while processing the folder.', 'error');
       } finally {
         setBusy(false);
       }
     } else {
-      alert(`Selected folder: ${folder}\nDetected ${files.length} file(s) but no PMTiles or CSV files found.`);
+      showMessage(`Selected folder: ${folder}\nDetected ${files.length} file(s) but no PMTiles or CSV files found.`, 'error');
     }
 
     e.target.value = '';
@@ -144,9 +171,10 @@ export default function UploadManager() {
       await db.deleteMapPackage(id);
       const module = await import('../lib/mapState');
       await module.loadPackagesFromDb();
+      showMessage('Map package removed.', 'success');
     } catch (err) {
       console.error('Failed to remove package', err);
-      alert('Failed to remove package');
+      showMessage('Failed to remove package', 'error');
     } finally {
       setBusy(false);
     }
@@ -158,6 +186,12 @@ export default function UploadManager() {
         <h2 className="text-xl font-bold text-slate-800 flex items-center tracking-tight"><Database className="w-6 h-6 mr-3 text-blue-600" />Offline Data Storage</h2>
         <span className="text-xs font-bold text-slate-500 uppercase tracking-widest hidden sm:block">Data Sources</span>
       </div>
+
+      {message && (
+        <div className={`p-4 rounded-md text-sm font-medium ${message.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+          {message.text}
+        </div>
+      )}
 
       <div className="border rounded-lg p-5 bg-slate-50">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

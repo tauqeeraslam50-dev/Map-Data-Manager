@@ -41,7 +41,7 @@ export function calculateLineOfSight(
   const maxDistance = 
     Math.sqrt(2 * Re * (h1Meters / 1000)) + 
     Math.sqrt(2 * Re * (h2Meters / 1000));
-  
+    
   const isWithinHorizon = distanceKm <= maxDistance;
 
   // Fresnel zone calculation at midpoint (where it's widest)
@@ -52,7 +52,7 @@ export function calculateLineOfSight(
   const maxFresnelRadiusMeters = distanceKm > 0 
     ? 17.32 * Math.sqrt((d1 * d2) / (frequencyGhz * distanceKm))
     : 0;
-    
+      
   // Earth bulge at midpoint in meters
   // h_bulge = (d1 * d2) / (2 * Re) * 1000
   const earthBulgeMeters = (d1 * d2) / (2 * Re) * 1000;
@@ -61,6 +61,7 @@ export function calculateLineOfSight(
   const averageHeight = (h1Meters + h2Meters) / 2;
   const clearanceMeters = averageHeight - earthBulgeMeters;
   const requiredClearance = 0.6 * maxFresnelRadiusMeters;
+
   const isClearLoS = clearanceMeters >= requiredClearance;
 
   return {

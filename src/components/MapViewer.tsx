@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getTowers, Tower } from '../lib/db';
@@ -14,7 +14,6 @@ export default function MapViewer() {
   const [hasMapLayer, setHasMapLayer] = useState(false);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const lineSourceId = 'los-line';
-
   const [mapLoaded, setMapLoaded] = useState(false);
 
   useEffect(() => {
@@ -34,41 +33,35 @@ export default function MapViewer() {
       const dynamicLayerIds = (currentStyle.layers || [])
         .map(layer => layer.id)
         .filter(id => id.startsWith('pmtiles-layer-'));
-
+        
       dynamicLayerIds.forEach(layerId => {
         if (map.current?.getLayer(layerId)) {
           map.current.removeLayer(layerId);
         }
       });
-
-      Object.keys(currentStyle.sources || {})
-        .filter(sourceId => sourceId.startsWith('pmtiles-pkg-'))
-        .forEach(sourceId => {
-          if (map.current?.getSource(sourceId)) {
-            map.current.removeSource(sourceId);
-          }
-        });
+      
+      const dynamicSourceIds = Object.keys(currentStyle.sources)
+        .filter(id => id.startsWith('pmtiles-source-'));
+        
+      dynamicSourceIds.forEach(sourceId => {
+        if (map.current?.getSource(sourceId)) {
+          map.current.removeSource(sourceId);
+        }
+      });
 
       let renderedPackageCount = 0;
 
       activePackages.forEach(pkg => {
-        if (!pkg.enabled || !map.current) return;
-
-        const sourceId = `pmtiles-pkg-${pkg.id}`;
+        const sourceId = `pmtiles-source-${pkg.id}`;
         const archiveUrl = `pmtiles://${pkg.id}`;
-        const isVector = pkg.tileType === 1;
 
-        if (isVector) {
-          const sourceLayers = pkg.vectorLayers || [];
-          if (sourceLayers.length === 0) {
-            console.warn(`No vector source layers found in ${pkg.name}`);
-            return;
-          }
-
-          map.current.addSource(sourceId, {
+        if (pkg.tileType === 1 && pkg.vectorLayers && pkg.vectorLayers.length > 0) {
+          map.current!.addSource(sourceId, {
             type: 'vector',
             url: archiveUrl
           });
+
+          const sourceLayers = pkg.vectorLayers;
 
           sourceLayers.forEach((sourceLayer, index) => {
             const safeIndex = `${pkg.id}-${index}`;
@@ -119,13 +112,13 @@ export default function MapViewer() {
 
           renderedPackageCount++;
         } else {
-          map.current.addSource(sourceId, {
+          map.current!.addSource(sourceId, {
             type: 'raster',
             url: archiveUrl,
             tileSize: 256
           });
 
-          map.current.addLayer({
+          map.current!.addLayer({
             id: `pmtiles-layer-${pkg.id}-raster`,
             type: 'raster',
             source: sourceId,
@@ -238,7 +231,7 @@ export default function MapViewer() {
     towers.forEach(tower => {
       const isSelected = selectedTowers.some(t => t.id === tower.id);
       const color = isSelected ? '#ef4444' : '#3b82f6';
-
+      
       const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`
         <div class="font-medium text-slate-800">${tower.name}</div>
         <div class="text-xs text-slate-500">ID: ${tower.id}</div>
@@ -324,7 +317,7 @@ export default function MapViewer() {
 
       <div className="relative flex-1">
         <div ref={mapContainer} style={{ height: '100%', width: '100%', minHeight: '400px', zIndex: 1 }} />
-
+        
         {!hasMapLayer && (
           <div className="absolute top-20 right-4 z-[1000] bg-white/90 backdrop-blur rounded-md border border-slate-200 shadow px-3 py-2 text-xs text-slate-600">
             No offline map package enabled. Install a PMTiles package from Data Manager.
@@ -336,12 +329,14 @@ export default function MapViewer() {
             <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 border-b border-slate-200 pb-2">
               Link Profile: {selectedTowers[0].name} ↔ {selectedTowers[1].name}
             </h3>
+            
             <div className="flex justify-between items-center mb-4">
               <div className="bg-blue-50 border border-blue-100 p-2 rounded w-full">
                 <p className="text-[10px] text-blue-600 font-bold uppercase">Air Distance</p>
                 <p className="text-lg font-mono font-bold text-blue-900">{losResult.distance.toFixed(2)} km</p>
               </div>
             </div>
+
             <div className="space-y-2 text-xs font-mono text-slate-600">
               <div className="flex justify-between items-end border-b border-slate-100 pb-1">
                 <span>Max Radio Horizon</span>

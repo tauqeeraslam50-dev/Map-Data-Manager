@@ -106,6 +106,16 @@ export async function saveTower(tower: Tower) {
   await db.put('towers', tower);
 }
 
+export async function saveTowers(towers: Tower[]) {
+  const db = await getDB();
+  const tx = db.transaction('towers', 'readwrite');
+  const store = tx.objectStore('towers');
+  for (const tower of towers) {
+    void store.put(tower);
+  }
+  await tx.done;
+}
+
 export async function getTowers(): Promise<Tower[]> {
   const db = await getDB();
   return db.getAll('towers');
