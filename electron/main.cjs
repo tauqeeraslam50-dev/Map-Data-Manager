@@ -5,114 +5,31 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 
-let mainWindow;
-let server;
-let offlineRoot = null;
-let satelliteRoot = null;
-let terrainRoot = null;
-let serverPort = 0;
-let tls = null;
+let mainWindow; let server; let offlineRoot=null; let satelliteRoot=null; let terrainRoot=null; let serverPort=0; let tls=null;
+function contentType(filePath){const ext=path.extname(filePath).toLowerCase();if(ext==='.jpg'||ext==='.jpeg')return'image/jpeg';if(ext==='.webp')return'image/webp';return'image/png';}
+function headers(res,status,extra={}){res.writeHead(status,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, OPTIONS','Access-Control-Allow-Headers':'*','Cache-Control':'public, max-age=86400',...extra});}
+function safeTilePath(root,z,x,y,ext){if(!root||![z,x,y].every(v=>/^\d+$/.test(v)))return null;const base=path.resolve(root);const file=path.resolve(base,z,x,`${y}.${ext.toLowerCase()}`);if(!file.startsWith(base+path.sep))return null;return fs.existsSync(file)?file:null;}
+function makeCertificate(){const certDir=path.join(app.getPath('userData'),'tls');fs.mkdirSync(certDir,{recursive:true});const keyFile=path.join(certDir,'localhost-key.pem');const certFile=path.join(certDir,'localhost-cert.pem');if(fs.existsSync(keyFile)&&fs.existsSync(certFile))return{key:fs.readFileSync(keyFile),cert:fs.readFileSync(certFile)};const pems=selfsigned.generate([{name:'commonName',value:'127.0.0.1'}],{keySize:2048,days:825,extensions:[{name:'basicConstraints',cA:false},{name:'subjectAltName',altNames:[{type:2,value:'localhost'},{type:7,ip:'127.0.0.1'}]}]});fs.writeFileSync(keyFile,pems.private);fs.writeFileSync(certFile,pems.cert);return{key:Buffer.from(pems.private),cert:Buffer.from(pems.cert)};}
+function serveTile(res,root,z,x,y,ext){const file=safeTilePath(root,z,x,y,ext);if(!file){headers(res,404,{'Content-Type':'text/plain'});return res.end('Tile not found');}headers(res,200,{'Content-Type':contentType(file)});fs.createReadStream(file).on('error',()=>{if(!res.headersSent)headers(res,500);res.end();}).pipe(res);}
+function startTileServer(){tls=makeCertificate();server=https.createServer(tls,(req,res)=>{const parsed=url.parse(req.url||'');if(req.method==='OPTIONS'){headers(res,204);return res.end();}if(parsed.pathname==='/health'){headers(res,200,{'Content-Type':'application/json'});return res.end(JSON.stringify({ok:true,root:offlineRoot,satelliteRoot,terrainRoot,port:serverPort,protocol:'https'}));}const match=parsed.pathname.match(/^\/(tiles|satellite|terrain)\/(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);if(!match){headers(res,404,{'Content-Type':'text/plain'});return res.end('Tile not found');}const roots={tiles:offlineRoot,satellite:satelliteRoot,terrain:terrainRoot};return serveTile(res,roots[match[1].toLowerCase()],match[2],match[3],match[4],match[5]);});server.listen(0,'127.0.0.1',()=>{serverPort=server.address().port;if(mainWindow)mainWindow.webContents.send('tile-server-ready',serverPort);});}
+function createWindow(){mainWindow=new BrowserWindow({width:1440,height:900,minWidth:1100,minHeight:700,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false}});mainWindow.webContents.session.setCertificateVerifyProc((request,callback)=>{if(request.hostname==='127.0.0.1'||request.hostname==='localhost')return callback(0);callback(-3);});mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL||'http://localhost:5173');}
+function selectFolder(title){return dialog.showOpenDialog(mainWindow,{title,properties:['openDirectory']});}
+function validFolder(p){return typeof p==='string'&&p.length>0&&fs.existsSync(p)&&fs.statSync(p).isDirectory();}
 
-function contentType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
-  if (ext === '.webp') return 'image/webp';
-  return 'image/png';
-}
-function headers(res, status, extra = {}) {
-  res.writeHead(status, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': '*', 'Cache-Control': 'public, max-age=86400', ...extra });
-}
-function safeTilePath(root, z, x, y, ext) {
-  if (!root || ![z, x, y].every(v => /^\d+$/.test(v))) return null;
-  const base = path.resolve(root);
-  const file = path.resolve(base, z, x, `${y}.${ext.toLowerCase()}`);
-  if (!file.startsWith(base + path.sep)) return null;
-  return fs.existsSync(file) ? file : null;
-}
-function makeCertificate() {
-  const certDir = path.join(app.getPath('userData'), 'tls');
-  fs.mkdirSync(certDir, { recursive: true });
-  const keyFile = path.join(certDir, 'localhost-key.pem');
-  const certFile = path.join(certDir, 'localhost-cert.pem');
-  if (fs.existsSync(keyFile) && fs.existsSync(certFile)) return { key: fs.readFileSync(keyFile), cert: fs.readFileSync(certFile) };
-  const pems = selfsigned.generate([{ name: 'commonName', value: '127.0.0.1' }], { keySize: 2048, days: 825, extensions: [{ name: 'basicConstraints', cA: false }, { name: 'subjectAltName', altNames: [{ type: 2, value: 'localhost' }, { type: 7, ip: '127.0.0.1' }] }] });
-  fs.writeFileSync(keyFile, pems.private); fs.writeFileSync(certFile, pems.cert);
-  return { key: Buffer.from(pems.private), cert: Buffer.from(pems.cert) };
-}
-function serveTile(res, root, z, x, y, ext) {
-  const file = safeTilePath(root, z, x, y, ext);
-  if (!file) { headers(res, 404, { 'Content-Type': 'text/plain' }); return res.end('Tile not found'); }
-  headers(res, 200, { 'Content-Type': contentType(file) });
-  fs.createReadStream(file).on('error', () => { if (!res.headersSent) headers(res, 500); res.end(); }).pipe(res);
-}
-function startTileServer() {
-  tls = makeCertificate();
-  server = https.createServer(tls, (req, res) => {
-    const parsed = url.parse(req.url || '');
-    if (req.method === 'OPTIONS') { headers(res, 204); return res.end(); }
-    if (parsed.pathname === '/health') { headers(res, 200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, root: offlineRoot, satelliteRoot, terrainRoot, port: serverPort, protocol: 'https' })); }
-    const match = parsed.pathname.match(/^\/(tiles|satellite|terrain)\/(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);
-    if (!match) { headers(res, 404, { 'Content-Type': 'text/plain' }); return res.end('Tile not found'); }
-    const roots = { tiles: offlineRoot, satellite: satelliteRoot, terrain: terrainRoot };
-    return serveTile(res, roots[match[1].toLowerCase()], match[2], match[3], match[4], match[5]);
-  });
-  server.listen(0, '127.0.0.1', () => { serverPort = server.address().port; if (mainWindow) mainWindow.webContents.send('tile-server-ready', serverPort); });
-}
-function createWindow() {
-  mainWindow = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } });
-  mainWindow.webContents.session.setCertificateVerifyProc((request, callback) => { if (request.hostname === '127.0.0.1' || request.hostname === 'localhost') return callback(0); callback(-3); });
-  mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173');
-}
-function selectFolder(title) { return dialog.showOpenDialog(mainWindow, { title, properties: ['openDirectory'] }); }
+ipcMain.handle('tile-server:get-url',()=>`https://127.0.0.1:${serverPort}`);
+ipcMain.handle('tile-server:test',async()=>({ok:!!serverPort,url:`https://127.0.0.1:${serverPort}`,root:offlineRoot}));
+ipcMain.handle('offline:select-folder',async()=>{const r=await selectFolder('Select offline base-map tile folder');if(r.canceled||!r.filePaths[0])return null;offlineRoot=r.filePaths[0];return{path:offlineRoot,tileUrl:`https://127.0.0.1:${serverPort}/tiles/{z}/{x}/{y}.png`};});
+ipcMain.handle('satellite:select-folder',async()=>{const r=await selectFolder('Select offline satellite tile folder');if(r.canceled||!r.filePaths[0])return null;satelliteRoot=r.filePaths[0];return{path:satelliteRoot,tileUrl:`https://127.0.0.1:${serverPort}/satellite/{z}/{x}/{y}.png`};});
+ipcMain.handle('terrain:select-folder',async()=>{const r=await selectFolder('Select offline terrain tile folder');if(r.canceled||!r.filePaths[0])return null;terrainRoot=r.filePaths[0];return{path:terrainRoot,tileUrl:`https://127.0.0.1:${serverPort}/terrain/{z}/{x}/{y}.png`};});
+ipcMain.handle('offline:set-folder',async(_e,p)=>{if(!validFolder(p))throw new Error('Invalid offline folder.');offlineRoot=path.resolve(p);return offlineRoot;});
+ipcMain.handle('satellite:set-folder',async(_e,p)=>{if(!validFolder(p))throw new Error('Invalid satellite folder.');satelliteRoot=path.resolve(p);return satelliteRoot;});
+ipcMain.handle('terrain:set-folder',async(_e,p)=>{if(!validFolder(p))throw new Error('Invalid terrain folder.');terrainRoot=path.resolve(p);return terrainRoot;});
+ipcMain.handle('download:select-destination',async()=>{const r=await selectFolder('Select folder for downloaded map tiles');return r.canceled||!r.filePaths[0]?null:r.filePaths[0];});
+ipcMain.handle('offline:get-folder',()=>offlineRoot);ipcMain.handle('satellite:get-folder',()=>satelliteRoot);ipcMain.handle('terrain:get-folder',()=>terrainRoot);
 
-ipcMain.handle('tile-server:get-url', () => `https://127.0.0.1:${serverPort}`);
-ipcMain.handle('tile-server:test', async () => ({ ok: !!serverPort, url: `https://127.0.0.1:${serverPort}`, root: offlineRoot }));
-ipcMain.handle('offline:select-folder', async () => { const r = await selectFolder('Select offline base-map tile folder'); if (r.canceled || !r.filePaths[0]) return null; offlineRoot = r.filePaths[0]; return { path: offlineRoot, tileUrl: `https://127.0.0.1:${serverPort}/tiles/{z}/{x}/{y}.png` }; });
-ipcMain.handle('satellite:select-folder', async () => { const r = await selectFolder('Select offline satellite tile folder'); if (r.canceled || !r.filePaths[0]) return null; satelliteRoot = r.filePaths[0]; return { path: satelliteRoot, tileUrl: `https://127.0.0.1:${serverPort}/satellite/{z}/{x}/{y}.png` }; });
-ipcMain.handle('terrain:select-folder', async () => { const r = await selectFolder('Select offline terrain tile folder'); if (r.canceled || !r.filePaths[0]) return null; terrainRoot = r.filePaths[0]; return { path: terrainRoot, tileUrl: `https://127.0.0.1:${serverPort}/terrain/{z}/{x}/{y}.png` }; });
-ipcMain.handle('download:select-destination', async () => { const r = await selectFolder('Select folder for downloaded map tiles'); return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]; });
-ipcMain.handle('offline:get-folder', () => offlineRoot);
-ipcMain.handle('satellite:get-folder', () => satelliteRoot);
-ipcMain.handle('terrain:get-folder', () => terrainRoot);
-
-function scanRoot(root) {
-  if (!root) return { files: 0, tiles: 0, zooms: [], root: null, bounds: null };
-  let files = 0, tiles = 0; const zooms = new Set(); let bounds = null;
-  const tileBounds = (z, x, y) => { const n = 2 ** z; const minLng = x / n * 360 - 180, maxLng = (x + 1) / n * 360 - 180; const lat = t => 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * t / n))); const a = lat(y), b = lat(y + 1); return { minLat: Math.min(a, b), maxLat: Math.max(a, b), minLng, maxLng }; };
-  const walk = dir => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const full = path.join(dir, entry.name); if (entry.isDirectory()) walk(full); else { files++; const rel = path.relative(root, full).replaceAll(path.sep, '/'); const m = rel.match(/^(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i); if (!m) continue; const z = Number(m[1]), x = Number(m[2]), y = Number(m[3]); tiles++; zooms.add(z); const b = tileBounds(z, x, y); bounds = bounds ? { minLat: Math.min(bounds.minLat, b.minLat), maxLat: Math.max(bounds.maxLat, b.maxLat), minLng: Math.min(bounds.minLng, b.minLng), maxLng: Math.max(bounds.maxLng, b.maxLng) } : b; } } };
-  walk(root); return { files, tiles, zooms: [...zooms].sort((a, b) => a - b), root, bounds };
-}
-ipcMain.handle('offline:scan', async () => scanRoot(offlineRoot));
-ipcMain.handle('satellite:scan', async () => scanRoot(satelliteRoot));
-ipcMain.handle('terrain:scan', async () => scanRoot(terrainRoot));
-
-function lonToX(lon, z) { return Math.floor(((lon + 180) / 360) * 2 ** z); }
-function latToY(lat, z) { const r = Math.max(-85.05112878, Math.min(85.05112878, lat)) * Math.PI / 180; return Math.floor((1 - Math.asinh(Math.tan(r)) / Math.PI) / 2 * 2 ** z); }
-async function downloadTile(tileUrl, file) {
-  if (fs.existsSync(file)) return false;
-  const response = await fetch(tileUrl, { headers: { 'User-Agent': 'PakLink-Map-Data-Manager/2.0' } });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const buffer = Buffer.from(await response.arrayBuffer()); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, buffer); return true;
-}
-ipcMain.handle('download:tiles', async (_event, options) => {
-  const { template, bounds, minZoom, maxZoom, destination, maxTiles = 50000 } = options || {};
-  if (!template || !bounds || !destination) throw new Error('Download parameters are incomplete.');
-  const z0 = Math.max(0, Math.min(19, Number(minZoom))), z1 = Math.max(z0, Math.min(19, Number(maxZoom)));
-  const minLat = Math.max(-85.05112878, Math.min(85.05112878, Number(bounds.minLat))), maxLat = Math.max(-85.05112878, Math.min(85.05112878, Number(bounds.maxLat)));
-  const minLng = Math.max(-180, Math.min(180, Number(bounds.minLng))), maxLng = Math.max(-180, Math.min(180, Number(bounds.maxLng)));
-  let total = 0; for (let z = z0; z <= z1; z++) { const x0 = lonToX(Math.min(minLng, maxLng), z), x1 = lonToX(Math.max(minLng, maxLng), z), y0 = latToY(Math.max(minLat, maxLat), z), y1 = latToY(Math.min(minLat, maxLat), z); total += Math.max(0, x1 - x0 + 1) * Math.max(0, y1 - y0 + 1); }
-  if (total > maxTiles) throw new Error(`This area requires ${total.toLocaleString()} tiles. Reduce the zoom range or area. Limit is ${maxTiles.toLocaleString()} tiles per job.`);
-  let done = 0, downloaded = 0;
-  for (let z = z0; z <= z1; z++) {
-    const x0 = lonToX(Math.min(minLng, maxLng), z), x1 = lonToX(Math.max(minLng, maxLng), z), y0 = latToY(Math.max(minLat, maxLat), z), y1 = latToY(Math.min(minLat, maxLat), z);
-    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
-      const tileUrl = template.replace('{z}', z).replace('{x}', x).replace('{y}', y); const ext = /\.jpg|\.jpeg/i.test(tileUrl) ? 'jpg' : 'png'; const file = path.join(destination, String(z), String(x), `${y}.${ext}`);
-      if (await downloadTile(tileUrl, file)) downloaded++; done++; if (mainWindow && done % 10 === 0) mainWindow.webContents.send('download:progress', { done, total, downloaded });
-    }
-  }
-  return { done, total, downloaded, destination };
-});
-
-app.whenReady().then(() => { session.defaultSession.setCertificateVerifyProc((request, callback) => { if (request.hostname === '127.0.0.1' || request.hostname === 'localhost') callback(0); else callback(-3); }); startTileServer(); createWindow(); });
-app.on('window-all-closed', () => { if (server) server.close(); if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+function scanRoot(root){if(!root||!validFolder(root))return{files:0,tiles:0,zooms:[],root:null,bounds:null};let files=0,tiles=0;const zooms=new Set();let bounds=null;const tileBounds=(z,x,y)=>{const n=2**z;const minLng=x/n*360-180,maxLng=(x+1)/n*360-180;const lat=t=>180/Math.PI*Math.atan(Math.sinh(Math.PI*(1-2*t/n)));const a=lat(y),b=lat(y+1);return{minLat:Math.min(a,b),maxLat:Math.max(a,b),minLng,maxLng};};const walk=dir=>{for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const full=path.join(dir,entry.name);if(entry.isDirectory())walk(full);else{files++;const rel=path.relative(root,full).replaceAll(path.sep,'/');const m=rel.match(/^(\d+)\/(\d+)\/(\d+)\.(png|jpe?g|webp)$/i);if(!m)continue;const z=Number(m[1]),x=Number(m[2]),y=Number(m[3]);tiles++;zooms.add(z);const b=tileBounds(z,x,y);bounds=bounds?{minLat:Math.min(bounds.minLat,b.minLat),maxLat:Math.max(bounds.maxLat,b.maxLat),minLng:Math.min(bounds.minLng,b.minLng),maxLng:Math.max(bounds.maxLng,b.maxLng)}:b;}}};walk(root);return{files,tiles,zooms:[...zooms].sort((a,b)=>a-b),root,bounds};}
+ipcMain.handle('offline:scan',async()=>scanRoot(offlineRoot));ipcMain.handle('satellite:scan',async()=>scanRoot(satelliteRoot));ipcMain.handle('terrain:scan',async()=>scanRoot(terrainRoot));
+function lonToX(lon,z){return Math.floor(((lon+180)/360)*2**z);}function latToY(lat,z){const r=Math.max(-85.05112878,Math.min(85.05112878,lat))*Math.PI/180;return Math.floor((1-Math.asinh(Math.tan(r))/Math.PI)/2*2**z);}
+async function downloadTile(tileUrl,file){if(fs.existsSync(file))return false;const response=await fetch(tileUrl,{headers:{'User-Agent':'PakLink-Map-Data-Manager/2.0'}});if(!response.ok)throw new Error(`HTTP ${response.status}`);const buffer=Buffer.from(await response.arrayBuffer());fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,buffer);return true;}
+ipcMain.handle('download:tiles',async(_event,options)=>{const{template,bounds,minZoom,maxZoom,destination,maxTiles=50000}=options||{};if(!template||!bounds||!destination)throw new Error('Download parameters are incomplete.');const z0=Math.max(0,Math.min(19,Number(minZoom))),z1=Math.max(z0,Math.min(19,Number(maxZoom)));const minLat=Math.max(-85.05112878,Math.min(85.05112878,Number(bounds.minLat))),maxLat=Math.max(-85.05112878,Math.min(85.05112878,Number(bounds.maxLat))),minLng=Math.max(-180,Math.min(180,Number(bounds.minLng))),maxLng=Math.max(-180,Math.min(180,Number(bounds.maxLng)));let total=0;for(let z=z0;z<=z1;z++){const x0=lonToX(Math.min(minLng,maxLng),z),x1=lonToX(Math.max(minLng,maxLng),z),y0=latToY(Math.max(minLat,maxLat),z),y1=latToY(Math.min(minLat,maxLat),z);total+=Math.max(0,x1-x0+1)*Math.max(0,y1-y0+1);}if(total>maxTiles)throw new Error(`This area requires ${total.toLocaleString()} tiles. Reduce the zoom range or area. Limit is ${maxTiles.toLocaleString()} tiles per job.`);let done=0,downloaded=0;for(let z=z0;z<=z1;z++){const x0=lonToX(Math.min(minLng,maxLng),z),x1=lonToX(Math.max(minLng,maxLng),z),y0=latToY(Math.max(minLat,maxLat),z),y1=latToY(Math.min(minLat,maxLat),z);for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){const tileUrl=template.replace('{z}',z).replace('{x}',x).replace('{y}',y);const ext=/\.jpg|\.jpeg/i.test(tileUrl)?'jpg':'png';const file=path.join(destination,String(z),String(x),`${y}.${ext}`);if(await downloadTile(tileUrl,file))downloaded++;done++;if(mainWindow&&done%10===0)mainWindow.webContents.send('download:progress',{done,total,downloaded});}}return{done,total,downloaded,destination};});
+app.whenReady().then(()=>{session.defaultSession.setCertificateVerifyProc((request,callback)=>{if(request.hostname==='127.0.0.1'||request.hostname==='localhost')callback(0);else callback(-3);});startTileServer();createWindow();});app.on('window-all-closed',()=>{if(server)server.close();if(process.platform!=='darwin')app.quit();});app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});
