@@ -23,5 +23,6 @@
     <PackageReference Include="Mapsui.Wpf" Version="5.1.0" />
     <PackageReference Include="BruTile" Version="6.0.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.8" />
+    <PackageReference Include="PMTiles.NET" Version="0.1.2" />
   </ItemGroup>
 </Project>
