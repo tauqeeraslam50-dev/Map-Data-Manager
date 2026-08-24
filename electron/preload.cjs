@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectOfflineFolder: () => ipcRenderer.invoke('offline:select-folder'),
   selectSatelliteFolder: () => ipcRenderer.invoke('satellite:select-folder'),
   selectTerrainFolder: () => ipcRenderer.invoke('terrain:select-folder'),
+  selectDownloadDestination: () => ipcRenderer.invoke('download:select-destination'),
   getOfflineFolder: () => ipcRenderer.invoke('offline:get-folder'),
   getSatelliteFolder: () => ipcRenderer.invoke('satellite:get-folder'),
   getTerrainFolder: () => ipcRenderer.invoke('terrain:get-folder'),
