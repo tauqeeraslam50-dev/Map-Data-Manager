@@ -2,7 +2,8 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
+using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
 using System.Windows.Threading;
 using Mapsui;
 
@@ -34,7 +35,7 @@ public partial class MainWindow
         UpdateCoordinateReadout(lat, lon);
     }
 
-    private void OfflineMap_MouseMove(object sender, MouseEventArgs e)
+    private void OfflineMap_MouseMove(object sender, WpfMouseEventArgs e)
     {
         if (_offlineTiles.Count == 0 || _offlineZoom < 0) return;
 
@@ -139,7 +140,7 @@ public partial class MainWindow
         EventManager.RegisterClassHandler(
             typeof(TextBox),
             TextBox.KeyDownEvent,
-            new KeyEventHandler(Phase1SearchBoxObserver),
+            new WpfKeyEventHandler(Phase1SearchBoxObserver),
             true);
     }
 
@@ -156,9 +157,9 @@ public partial class MainWindow
         }));
     }
 
-    private static void Phase1SearchBoxObserver(object sender, KeyEventArgs e)
+    private static void Phase1SearchBoxObserver(object sender, WpfKeyEventArgs e)
     {
-        if (e.Key != Key.Enter || sender is not TextBox textBox || textBox.Name != "SearchBox") return;
+        if (e.Key != System.Windows.Input.Key.Enter || sender is not TextBox textBox || textBox.Name != "SearchBox") return;
         if (Window.GetWindow(textBox) is not MainWindow window) return;
 
         window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () =>
@@ -168,4 +169,6 @@ public partial class MainWindow
             window.ShowPhase1Highlight("SEARCH RESULT");
         }));
     }
+
+    private delegate void WpfKeyEventHandler(object sender, WpfKeyEventArgs e);
 }
