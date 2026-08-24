@@ -78,7 +78,7 @@ public sealed class PMTilesRasterController : IAsyncDisposable
         RecalculateBounds();
         SetCanvasSize();
         await RenderViewportAsync();
-        CenterOnWorld(center.lon, center.lat, GetViewportCenterWorld().scale * 2.0);
+        CenterOn(center.lat, center.lon);
     }
 
     public async Task ZoomOutAsync()
@@ -89,7 +89,7 @@ public sealed class PMTilesRasterController : IAsyncDisposable
         RecalculateBounds();
         SetCanvasSize();
         await RenderViewportAsync();
-        CenterOnWorld(center.lon, center.lat, GetViewportCenterWorld().scale / 2.0);
+        CenterOn(center.lat, center.lon);
     }
 
     public async Task ResetAsync()
@@ -115,27 +115,15 @@ public sealed class PMTilesRasterController : IAsyncDisposable
         _viewer?.ScrollToVerticalOffset(Math.Max(0, py - _viewer.ViewportHeight / 2));
     }
 
-    private void CenterOnWorld(double lon, double lat, double scale)
+    private (double lon, double lat) GetViewportCenterWorld()
     {
-        if (_viewer is null) return;
-        var n = Math.Pow(2, _zoom);
-        var x = (lon + 180.0) / 360.0 * n;
-        var y = LatToWorldY(lat, n);
-        var px = (x - _minX) * TileSize;
-        var py = (y - _minY) * TileSize;
-        _viewer.ScrollToHorizontalOffset(Math.Max(0, px * scale - _viewer.ViewportWidth / 2));
-        _viewer.ScrollToVerticalOffset(Math.Max(0, py * scale - _viewer.ViewportHeight / 2));
-    }
-
-    private (double lon, double lat, double scale) GetViewportCenterWorld()
-    {
-        if (_viewer is null) return (0, 0, 1);
+        if (_viewer is null) return (0, 0);
         var cx = (_viewer.HorizontalOffset + _viewer.ViewportWidth / 2) / TileSize + _minX;
         var cy = (_viewer.VerticalOffset + _viewer.ViewportHeight / 2) / TileSize + _minY;
         var n = Math.Pow(2, _zoom);
         var lon = cx / n * 360.0 - 180.0;
         var lat = WorldYToLat(cy, n);
-        return (lon, lat, 1);
+        return (lon, lat);
     }
 
     private void RecalculateBounds()
