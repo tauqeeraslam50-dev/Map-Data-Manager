@@ -5,7 +5,7 @@ using System.Windows;
 
 namespace MapDataManager;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private static string LogDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
