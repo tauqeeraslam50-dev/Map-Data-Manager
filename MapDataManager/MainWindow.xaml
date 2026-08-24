@@ -38,9 +38,9 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
                     <TextBox x:Name="SearchBox" Width="310" Height="36" Padding="10,7" Margin="0,0,8,0"
-                             ToolTip="Search city/place or latitude, longitude" KeyDown="SearchBox_KeyDown"/>
-                    <Button Content="SEARCH" Width="90" Height="36" Margin="0,0,8,0" Click="Search_Click"/>
-                    <Button Content="GO TO" Width="75" Height="36" Margin="0,0,8,0" Click="Phase1GoTo_Click" ToolTip="Go to the latitude, longitude entered in the search box"/>
+                             ToolTip="Search city/place or latitude, longitude" KeyDown="PMTilesSearchBox_KeyDown"/>
+                    <Button Content="SEARCH" Width="90" Height="36" Margin="0,0,8,0" Click="PMTilesSearch_Click"/>
+                    <Button Content="GO TO" Width="75" Height="36" Margin="0,0,8,0" Click="PMTilesGoTo_Click" ToolTip="Go to the latitude, longitude entered in the search box"/>
                     <Button Content="DOWNLOAD" Width="105" Height="36" Margin="0,0,8,0" Click="Download_Click"/>
                     <Button x:Name="FolderButton" Content="Select Map Folder" Padding="18,8" Margin="0,0,8,0" Click="SelectFolder_Click"/>
                     <Button Content="Open PMTiles" Padding="18,8" Click="SelectPMTiles_Click" ToolTip="Open a local PMTiles raster archive"/>
@@ -55,9 +55,9 @@
                     </ScrollViewer>
 
                     <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="15" Width="48">
-                        <Button Content="+" FontSize="25" FontWeight="Bold" Height="45" Margin="0,0,0,5" Click="ZoomIn_Click" ToolTip="Zoom in"/>
-                        <Button Content="−" FontSize="25" FontWeight="Bold" Height="45" Margin="0,0,0,5" Click="ZoomOut_Click" ToolTip="Zoom out"/>
-                        <Button Content="⌂" FontSize="20" Height="42" Click="ZoomHome_Click" ToolTip="Pakistan / default view"/>
+                        <Button x:Name="ZoomInButton" Content="+" FontSize="25" FontWeight="Bold" Height="45" Margin="0,0,0,5" Click="PMTilesZoomIn_Click" ToolTip="Zoom in"/>
+                        <Button x:Name="ZoomOutButton" Content="−" FontSize="25" FontWeight="Bold" Height="45" Margin="0,0,0,5" Click="PMTilesZoomOut_Click" ToolTip="Zoom out"/>
+                        <Button x:Name="ZoomHomeButton" Content="⌂" FontSize="20" Height="42" Click="PMTilesZoomHome_Click" ToolTip="Pakistan / default view"/>
                     </StackPanel>
 
                     <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="15" Padding="12" Background="#DD0B1220" CornerRadius="6">
