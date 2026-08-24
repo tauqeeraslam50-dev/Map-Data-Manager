@@ -24,5 +24,8 @@ internal static class MapEnhancementHooks
 
 internal static class MapsuiColorExtensions
 {
-    internal static Color WithAlpha(this Color color, int alpha) => Color.FromArgb(Math.Clamp(alpha, 0, 255), color.R, color.G, color.B);
+    internal static Color WithAlpha(this Color color, int alpha)
+    {
+        return new Color(color.R, color.G, color.B, Math.Clamp(alpha, 0, 255));
+    }
 }
