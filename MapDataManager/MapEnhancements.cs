@@ -1,9 +1,16 @@
 using System.IO.Compression;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
+using WpfButton = System.Windows.Controls.Button;
+using WpfCanvas = System.Windows.Controls.Canvas;
+using WpfEllipse = System.Windows.Shapes.Ellipse;
+using WpfPanel = System.Windows.Controls.Panel;
+using WpfTextBlock = System.Windows.Controls.TextBlock;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfSolidColorBrush = System.Windows.Media.SolidColorBrush;
+using WpfMediaColor = System.Windows.Media.Color;
 using Mapsui;
 using Mapsui.Layers;
 using Mapsui.Styles;
@@ -15,20 +22,19 @@ namespace MapDataManager;
 public partial class MainWindow
 {
     private MemoryLayer? _searchLayer;
-    private Button? _pmTilesButton;
+    private WpfButton? _pmTilesButton;
 
     static MainWindow()
     {
         EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnEnhancedLoaded));
-        EventManager.RegisterClassHandler(typeof(Button), Button.ClickEvent, new RoutedEventHandler(OnEnhancedButtonClick));
+        EventManager.RegisterClassHandler(typeof(WpfButton), WpfButton.ClickEvent, new RoutedEventHandler(OnEnhancedButtonClick));
     }
 
     private static void OnEnhancedLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is not MainWindow window || window._pmTilesButton != null) return;
-        if (window.FolderButton.Parent is not Panel panel) return;
-
-        var button = new Button
+        if (window.FolderButton.Parent is not WpfPanel panel) return;
+        var button = new WpfButton
         {
             Content = "PMTILES",
             Height = window.FolderButton.Height,
@@ -42,8 +48,7 @@ public partial class MainWindow
 
     private static async void OnEnhancedButtonClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button || button.Content?.ToString() != "SEARCH") return;
-        if (button.DataContext is not null) { }
+        if (sender is not WpfButton button || button.Content?.ToString() != "SEARCH") return;
         var window = Window.GetWindow(button) as MainWindow;
         if (window is null) return;
         e.Handled = true;
@@ -123,7 +128,8 @@ public partial class MainWindow
     {
         if (MapControl.Map is null) return;
         _searchLayer?.Dispose();
-        var feature = new PointFeature(SphericalMercator.FromLonLat(lon, lat).ToMPoint());
+        var projected = SphericalMercator.FromLonLat(lon, lat);
+        var feature = new PointFeature(new MPoint(projected.x, projected.y));
         feature["Label"] = label;
         feature.Styles.Add(new SymbolStyle
         {
@@ -132,8 +138,14 @@ public partial class MainWindow
             Fill = new Brush(Color.Red),
             Outline = new Pen { Color = Color.White, Width = 2 }
         });
-        feature.Styles.Add(new LabelStyle { Text = label, Offset = new Offset(12, -12), ForeColor = Color.White, BackColor = new Brush(Color.Black.WithAlpha(190)) });
-        _searchLayer = new MemoryLayer("Search Result") { Features = new[] { feature }, IsMapInfoLayer = true };
+        feature.Styles.Add(new LabelStyle
+        {
+            Text = label,
+            Offset = new Offset(12, -12),
+            ForeColor = Color.White,
+            BackColor = new Brush(Color.Black.WithAlpha(190))
+        });
+        _searchLayer = new MemoryLayer("Search Result") { Features = new[] { feature } };
         MapControl.Map.Layers.Add(_searchLayer);
         MapControl.Map.Refresh();
 
@@ -155,11 +167,18 @@ public partial class MainWindow
         if (_offlineTms) y = n - 1 - y;
         var px = (x - minX) * 256;
         var py = (y - minY) * 256;
-        var marker = new Ellipse { Width = 18, Height = 18, Fill = Brushes.Red, Stroke = Brushes.White, StrokeThickness = 3, ToolTip = label };
-        Canvas.SetLeft(marker, px - 9); Canvas.SetTop(marker, py - 9); Panel.SetZIndex(marker, 100);
+        var marker = new WpfEllipse { Width = 18, Height = 18, Fill = WpfBrushes.Red, Stroke = WpfBrushes.White, StrokeThickness = 3, ToolTip = label };
+        WpfCanvas.SetLeft(marker, px - 9); WpfCanvas.SetTop(marker, py - 9); WpfPanel.SetZIndex(marker, 100);
         OfflineCanvas.Children.Add(marker);
-        var text = new TextBlock { Text = label, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(220, 127, 29, 29)), Padding = new Thickness(4, 2, 4, 2), FontWeight = FontWeights.Bold };
-        Canvas.SetLeft(text, px + 10); Canvas.SetTop(text, py - 14); Panel.SetZIndex(text, 101);
+        var text = new WpfTextBlock
+        {
+            Text = label,
+            Foreground = WpfBrushes.White,
+            Background = new WpfSolidColorBrush(WpfMediaColor.FromArgb(220, 127, 29, 29)),
+            Padding = new Thickness(4, 2, 4, 2),
+            FontWeight = FontWeights.Bold
+        };
+        WpfCanvas.SetLeft(text, px + 10); WpfCanvas.SetTop(text, py - 14); WpfPanel.SetZIndex(text, 101);
         OfflineCanvas.Children.Add(text);
     }
 
@@ -242,8 +261,8 @@ public partial class MainWindow
         {
             var image = LoadBitmapFromBytes(tile.Data);
             if (image is null) continue;
-            var control = new System.Windows.Controls.Image { Width = 256, Height = 256, Source = image, Stretch = Stretch.Fill, SnapsToDevicePixels = true };
-            Canvas.SetLeft(control, (tile.X - minX) * 256.0); Canvas.SetTop(control, (tile.Y - minY) * 256.0);
+            var control = new System.Windows.Controls.Image { Width = 256, Height = 256, Source = image, Stretch = System.Windows.Media.Stretch.Fill, SnapsToDevicePixels = true };
+            WpfCanvas.SetLeft(control, (tile.X - minX) * 256.0); WpfCanvas.SetTop(control, (tile.Y - minY) * 256.0);
             OfflineCanvas.Children.Add(control);
         }
         AddOfflineEnglishLabels(zoom, minX, minY, maxX, maxY, 256);
@@ -256,9 +275,15 @@ public partial class MainWindow
         OfflineScrollViewer.ScrollToVerticalOffset(Math.Max(0, OfflineCanvas.Height / 2 - OfflineScrollViewer.ViewportHeight / 2));
     }
 
-    private static BitmapImage? LoadBitmapFromBytes(byte[] data)
+    private static System.Windows.Media.Imaging.BitmapImage? LoadBitmapFromBytes(byte[] data)
     {
-        try { using var ms = new MemoryStream(data); var b = new BitmapImage(); b.BeginInit(); b.CacheOption = BitmapCacheOption.OnLoad; b.StreamSource = ms; b.EndInit(); b.Freeze(); return b; }
+        try
+        {
+            using var ms = new MemoryStream(data);
+            var b = new System.Windows.Media.Imaging.BitmapImage();
+            b.BeginInit(); b.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; b.StreamSource = ms; b.EndInit(); b.Freeze();
+            return b;
+        }
         catch { return null; }
     }
 
@@ -309,7 +334,8 @@ public partial class MainWindow
                 for (ulong i = 0; i < entry.RunLength && result.Count < maxTiles; i++)
                 {
                     var tileId = entry.TileId + i;
-                    var zxy = TileIdToZxy(tileId); if (zxy.Z != zoom) continue;
+                    var zxy = TileIdToZxy(tileId);
+                    if (zxy.Z != zoom) continue;
                     var data = Decompress(ReadAtChecked(_tileOffset + entry.Offset, entry.Length), TileCompression);
                     result.Add(new PmTile(zxy.Z, zxy.X, zxy.Y, data));
                 }
@@ -341,24 +367,48 @@ public partial class MainWindow
         private sealed record Entry(ulong TileId, ulong Offset, ulong Length, ulong RunLength);
         private static List<Entry> DecodeDirectory(byte[] data)
         {
-            var p = 0; ulong ReadVar() { ulong v = 0; int shift = 0; while (p < data.Length) { var c = data[p++]; v |= (ulong)(c & 127) << shift; if ((c & 128) == 0) return v; shift += 7; if (shift > 63) throw new InvalidDataException("Invalid PMTiles varint."); } throw new EndOfStreamException(); }
+            var p = 0;
+            ulong ReadVar()
+            {
+                ulong v = 0; int shift = 0;
+                while (p < data.Length)
+                {
+                    var c = data[p++]; v |= (ulong)(c & 127) << shift;
+                    if ((c & 128) == 0) return v;
+                    shift += 7; if (shift > 63) throw new InvalidDataException("Invalid PMTiles varint.");
+                }
+                throw new EndOfStreamException();
+            }
             var n = ReadVar(); if (n > 1000000) throw new InvalidDataException("PMTiles directory is unreasonably large.");
             var ids = new ulong[n]; var runs = new ulong[n]; var lengths = new ulong[n]; var offsets = new ulong[n];
             ulong last = 0; for (ulong i = 0; i < n; i++) { last += ReadVar(); ids[i] = last; }
             for (ulong i = 0; i < n; i++) runs[i] = ReadVar();
             for (ulong i = 0; i < n; i++) lengths[i] = ReadVar();
-            ulong next = 0; for (ulong i = 0; i < n; i++) { var v = ReadVar(); offsets[i] = v == 0 && i > 0 ? next : v - 1; next = offsets[i] + lengths[i]; }
-            var result = new List<Entry>((int)n); for (ulong i = 0; i < n; i++) result.Add(new Entry(ids[i], offsets[i], lengths[i], runs[i])); return result;
+            ulong next = 0;
+            for (ulong i = 0; i < n; i++) { var v = ReadVar(); offsets[i] = v == 0 && i > 0 ? next : v - 1; next = offsets[i] + lengths[i]; }
+            var result = new List<Entry>((int)n);
+            for (ulong i = 0; i < n; i++) result.Add(new Entry(ids[i], offsets[i], lengths[i], runs[i]));
+            return result;
         }
 
         private static (int Z, int X, int Y) TileIdToZxy(ulong tileId)
         {
-            var z = 0; ulong acc = 0; while (z < 27) { var count = 1UL << (2 * z); if (tileId < acc + count) break; acc += count; z++; }
+            var z = 0; ulong acc = 0;
+            while (z < 27) { var count = 1UL << (2 * z); if (tileId < acc + count) break; acc += count; z++; }
             if (z > 26) throw new InvalidDataException("PMTiles tile zoom exceeds supported range.");
             var t = tileId - acc; var x = 0; var y = 0; var n = 1 << z;
-            for (var s = 1; s < n; s <<= 1) { var rx = ((t / 2) & (ulong)s) != 0 ? 1 : 0; var ry = ((t ^ (ulong)(rx * s)) & (ulong)s) != 0 ? 1 : 0; (x, y) = Rotate(s, x, y, rx, ry); t /= 4; x += rx * s; y += ry * s; }
+            for (var s = 1; s < n; s <<= 1)
+            {
+                var rx = ((t / 2) & (ulong)s) != 0 ? 1 : 0;
+                var ry = ((t ^ (ulong)(rx * s)) & (ulong)s) != 0 ? 1 : 0;
+                (x, y) = Rotate(s, x, y, rx, ry); t /= 4; x += rx * s; y += ry * s;
+            }
             return (z, x, y);
         }
-        private static (int X, int Y) Rotate(int n, int x, int y, int rx, int ry) { if (ry == 0) { if (rx != 0) return (n - 1 - y, n - 1 - x); return (y, x); } return (x, y); }
+        private static (int X, int Y) Rotate(int n, int x, int y, int rx, int ry)
+        {
+            if (ry == 0) { if (rx != 0) return (n - 1 - y, n - 1 - x); return (y, x); }
+            return (x, y);
+        }
     }
 }
