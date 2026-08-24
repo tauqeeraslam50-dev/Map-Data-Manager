@@ -40,6 +40,7 @@
                     <TextBox x:Name="SearchBox" Width="310" Height="36" Padding="10,7" Margin="0,0,8,0"
                              ToolTip="Search city/place or latitude, longitude" KeyDown="SearchBox_KeyDown"/>
                     <Button Content="SEARCH" Width="90" Height="36" Margin="0,0,8,0" Click="Search_Click"/>
+                    <Button Content="GO TO" Width="75" Height="36" Margin="0,0,8,0" Click="Phase1GoTo_Click" ToolTip="Go to the latitude, longitude entered in the search box"/>
                     <Button Content="DOWNLOAD" Width="105" Height="36" Margin="0,0,8,0" Click="Download_Click"/>
                     <Button x:Name="FolderButton" Content="Select Map Folder" Padding="18,8" Click="SelectFolder_Click"/>
                 </StackPanel>
@@ -47,8 +48,8 @@
 
             <Border Grid.Row="1" Background="#0F172A" CornerRadius="8" BorderBrush="#334155" BorderThickness="1">
                 <Grid>
-                    <mapsui:MapControl x:Name="MapControl" Visibility="Visible"/>
-                    <ScrollViewer x:Name="OfflineScrollViewer" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <mapsui:MapControl x:Name="MapControl" Visibility="Visible" MapPointerMoved="MapControl_MapPointerMoved"/>
+                    <ScrollViewer x:Name="OfflineScrollViewer" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MouseMove="OfflineMap_MouseMove">
                         <Canvas x:Name="OfflineCanvas" Background="#1E293B"/>
                     </ScrollViewer>
 
@@ -65,6 +66,20 @@
                             <TextBlock Text="English place labels enabled for offline Pakistan gazetteer" Foreground="#94A3B8" Margin="0,4,0,0" FontSize="11"/>
                         </StackPanel>
                     </Border>
+
+                    <Border x:Name="Phase1Highlight" Visibility="Collapsed" Width="190" Height="72"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Background="#DD0B1220" BorderBrush="#38BDF8" BorderThickness="2"
+                            CornerRadius="36" IsHitTestVisible="False" Padding="10">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock x:Name="Phase1MarkerTitle" Text="SEARCH RESULT" Foreground="#7DD3FC" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="Phase1MarkerCoordinates" Text="33.684400, 73.047900" Foreground="White" FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="15" Padding="10,7" Background="#EE0B1220" CornerRadius="5">
+                        <TextBlock x:Name="MouseCoordinateText" Text="Cursor: Lat ---, Lon ---" Foreground="White" FontFamily="Consolas" FontSize="12"/>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -74,6 +89,8 @@
                 <StatusBarItem x:Name="FileStatus" Content="No folder selected"/>
                 <Separator/>
                 <StatusBarItem x:Name="ModeStatus" Content="OFFLINE"/>
+                <Separator/>
+                <StatusBarItem x:Name="CoordinateStatus" Content="Lat ---, Lon ---"/>
             </StatusBar>
         </Grid>
     </Grid>
