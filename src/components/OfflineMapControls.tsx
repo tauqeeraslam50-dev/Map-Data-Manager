@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { FolderOpen, ScanSearch, CheckCircle2, AlertCircle } from 'lucide-react';
 
-declare global { interface Window { electronAPI?: { selectOfflineFolder: () => Promise<{path:string; tileUrl:string} | null>; scanOfflineFolder: () => Promise<{files:number;tiles:number;zooms:number[];root:string|null}>; }; } }
-
 export default function OfflineMapControls() {
   const [folder, setFolder] = useState<string | null>(null);
   const [status, setStatus] = useState('Select your offline map folder.');
