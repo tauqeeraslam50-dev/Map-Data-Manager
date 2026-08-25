@@ -4,8 +4,6 @@ import 'leaflet/dist/leaflet.css';
 import { FolderOpen, RefreshCw, Server, MapPinned } from 'lucide-react';
 
 interface ScanResult { files:number; tiles:number; zooms:number[]; root:string|null; bounds:{minLat:number;minLng:number;maxLat:number;maxLng:number}|null; }
-interface ElectronAPI { selectOfflineFolder:()=>Promise<{path:string;tileUrl:string}|null>; scanOfflineFolder:()=>Promise<ScanResult>; getTileServerUrl:()=>Promise<string>; }
-declare global { interface Window { electronAPI?: ElectronAPI } }
 
 export default function OfflineRasterMap(){
  const mapEl=useRef<HTMLDivElement>(null); const mapRef=useRef<L.Map|null>(null); const layerRef=useRef<L.TileLayer|null>(null);
