@@ -13,17 +13,6 @@ type ScanResult = {
   bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null;
 };
 
-type ElectronAPI = {
-  selectOfflineFolder?: () => Promise<{ path: string; tileUrl: string } | null>;
-  scanOfflineFolder?: () => Promise<ScanResult>;
-  getTileServerUrl?: () => Promise<string>;
-  testTileServer?: () => Promise<{ ok: boolean; url?: string; root?: string; error?: string }>;
-};
-
-declare global {
-  interface Window { electronAPI?: ElectronAPI; }
-}
-
 export default function OfflineMapViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -118,8 +107,7 @@ export default function OfflineMapViewer() {
         layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e2e8f0' } }]
       },
       center: DEFAULT_CENTER,
-      zoom: 5,
-      attributionControl: true
+      zoom: 5
     });
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
     map.on('error', event => {
