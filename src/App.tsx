@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import UploadManager from './components/UploadManager';
 import OnlineMapManager from './components/OnlineMapManager';
 import Phase1Map from './components/Phase1Map';
-import { Database, Map as MapIcon, Settings, Menu, Globe2 } from 'lucide-react';
+import RNMSConnection from './components/RNMSConnection';
+import { Database, Map as MapIcon, Settings, Menu, Globe2, Radio } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'map' | 'data' | 'online'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'data' | 'online' | 'rnms'>('map');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const selectTab = (tab: 'map' | 'data' | 'online') => { setActiveTab(tab); setMobileMenuOpen(false); };
+  const selectTab = (tab: 'map' | 'data' | 'online' | 'rnms') => { setActiveTab(tab); setMobileMenuOpen(false); };
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 text-slate-900 overflow-hidden font-sans">
       <nav className="h-14 bg-blue-900 text-white flex items-center justify-between px-6 shrink-0 shadow-md">
@@ -22,6 +23,7 @@ export default function App() {
             <button onClick={() => selectTab('map')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'map' ? 'bg-green-50 border-green-200 text-green-700 font-semibold shadow-sm' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><MapIcon className={`w-5 h-5 ${activeTab === 'map' ? 'text-green-600' : 'text-slate-400'}`} /><span>Map & Phase 1 Controls</span></button>
             <button onClick={() => selectTab('online')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'online' ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><Globe2 className={`w-5 h-5 ${activeTab === 'online' ? 'text-blue-600' : 'text-slate-400'}`} /><span>Online Map & Download</span></button>
             <button onClick={() => selectTab('data')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'data' ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><Database className={`w-5 h-5 ${activeTab === 'data' ? 'text-blue-600' : 'text-slate-400'}`} /><span>PMTiles & Data Manager</span></button>
+            <button onClick={() => selectTab('rnms')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors border ${activeTab === 'rnms' ? 'bg-purple-50 border-purple-200 text-purple-700 font-semibold shadow-sm' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><Radio className={`w-5 h-5 ${activeTab === 'rnms' ? 'text-purple-600' : 'text-slate-400'}`} /><span>RNMS Connection</span></button>
           </div>
           <div className="p-4 border-t border-slate-200"><div className="bg-slate-900 text-white p-4 rounded-xl text-center space-y-2 shadow-inner"><p className="text-[10px] opacity-70 tracking-widest uppercase">Map Engine</p><p className="font-mono text-xs text-green-400 font-semibold">Leaflet + Isolated Services</p></div></div>
         </aside>
@@ -29,6 +31,7 @@ export default function App() {
           {activeTab === 'map' && <div className="relative flex-1 min-h-0"><Phase1Map /></div>}
           {activeTab === 'online' && <OnlineMapManager />}
           {activeTab === 'data' && <UploadManager />}
+          {activeTab === 'rnms' && <RNMSConnection />}
         </main>
         {mobileMenuOpen && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setMobileMenuOpen(false)} />}
       </div>
